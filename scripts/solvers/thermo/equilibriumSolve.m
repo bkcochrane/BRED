@@ -1,55 +1,64 @@
-function [T, N_J, propellant] = equilibriumSolve(MODE, TARGET, P, GasData, T, N_J, NEED_MU, IS_FROZEN)
+function [temp, nj, Propellant] = equilibriumSolve(mode, target, p, PropData, temp, nj, needMu, isFrozen)
+
+    if nargin < 8; isFrozen = false; end
     
-    if nargin < 8; IS_FROZEN = false; end
-    
-    % If frozen, immediately calculate T and return (skip phase changes)
-    if IS_FROZEN
-        [T, N_J, propellant, ~] = findEquilibrium(MODE, TARGET, P, GasData, T, N_J, NEED_MU, true);
+    % If frozen, calculate T and return (skip phase changes)
+    if isFrozen
+        [temp, nj, Propellant] = findEquilibrium(mode, target, p, PropData, temp, nj, needMu, true);
         return;
     end
 
     % Candidate condensed species
-    if isfield(GasData,'CONDENSED_LIST'), CANDIDATES = GasData.CONDENSED_LIST(:).';
-    else, CANDIDATES = [];
+    if isfield(PropData, 'CONDENSED_LIST') && ~isempty(PropData.CONDENSED_LIST)
+        candidates = PropData.CONDENSED_LIST(:).';
+    else
+        % No condensed species exist in database
+        PropData.ACTIVE_CONDENSED = [];
+        [temp, nj, Propellant, ~] = findEquilibrium(mode, target, p, PropData, temp, nj, needMu, false);
+        return;
     end
- 
-    % Start with active set derived from the incoming guess
-    active = CANDIDATES(N_J(CANDIDATES) > 1e-10);
+
+    % Logical mask over candidates
+    isActive = nj(candidates) > 1e-10;
     
     % Outer iteration loop
     for pass = 1:12
-        GasData.ACTIVE_CONDENSED = active;
-        [T, N_J, propellant, PI_I] = findEquilibrium(MODE, TARGET, P, GasData, T, N_J, NEED_MU);
- 
-        % Drop any active condensed species the solve pushed to zero
-        drop = active(N_J(active) <= 1e-10);
-        if ~isempty(drop)
-            N_J(drop) = 0;
-            active = setdiff(active, drop);
-            continue; % Re-solve with the reduced set
-        end
-    
-        % Test to see if species wants to condense
-        [~, ~, ~, G_RT] = nasa9(GasData.A_NASA, GasData.B_NASA, GasData.T_HI, T);
-        A_IJ = GasData.A_IJ;
-        inactive = setdiff(CANDIDATES, active);
-        add = [];
+        active = candidates(isActive);
+        PropData.ACTIVE_CONDENSED = active;
+        [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData, temp, nj, needMu, false);
 
-        for j = inactive
-            % Eq 3.7, >0 means it wants to condense
-            drive = A_IJ(:,j).' * PI_I - G_RT(j);
-            if drive > 1e-8
-                add(end+1) = j;
+        % Drop any active condensed species the solve pushed to zero
+        if any(isActive)
+            toDrop = isActive & (nj(candidates) <= 1e-10);
+            if any(toDrop)
+                nj(candidates(toDrop)) = 0;
+                isActive(toDrop) = false;
+                continue; % Re-solve with the reduced set
             end
         end
+    
+        % If all candidates are already active, none are inactive to test
+        if all(isActive)
+            break;
+        end
 
-        if ~isempty(add)
-            active = sort([active, add]);
-            N_J(add) = 1e-6; % Prevents solver oscillation
+        % Test inactive candidates to see if any species wants to condense
+        gRT = Propellant.gRT;
+        inactiveIdx = find(~isActive);
+        inactSpecies = candidates(inactiveIdx);
+        
+        % Vectorized Eq 3.7 check across all inactive candidates at once
+        drive = (piI.' * PropData.A_IJ(:, inactSpecies)) - gRT(inactSpecies).';
+        toAdd = drive > 1e-8;
+
+        if any(toAdd)
+            addSpecies = inactSpecies(toAdd);
+            isActive(inactiveIdx(toAdd)) = true;
+            nj(addSpecies) = 1e-6; % Prevents solver oscillation
             continue; % Re-solve with the enlarged set
         end
- 
+
         break; % Stable equilibrium
-        
     end
+
 end

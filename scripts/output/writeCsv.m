@@ -1,8 +1,8 @@
 function writeCsv(Engine)
 
     % Gas side
-    X_HOT = Engine.STREAM_X(:) * 1000; % mm
-    R_HOT = Engine.STREAM_R(:) * 1000;
+    X_HOT = Engine.Stream.X(:) * 1000; % mm
+    R_HOT = Engine.Stream.R(:) * 1000;
     [X_HOT, iu] = unique(X_HOT);
     R_HOT = R_HOT(iu);
     s0 = [0; cumsum(hypot(diff(X_HOT), diff(R_HOT)))];
@@ -13,9 +13,9 @@ function writeCsv(Engine)
     X_HOT = X_HOT(:);  R_HOT = R_HOT(:);
 
     % Channel dimensions
-    t = Engine.WALL_THICKNESS * 1000; % mm
-    Hs = Engine.CHANNEL_HEIGHT_STATION(iu) * 1000; % mm
-    Ws = Engine.CHANNEL_WIDTH_STATION(iu)  * 1000; % mm
+    t = Engine.Wall.THICKNESS * 1000; % mm
+    Hs = Engine.Cooling.CHANNEL_HEIGHT_STATION(iu) * 1000; % mm
+    Ws = Engine.Cooling.CHANNEL_WIDTH_STATION(iu)  * 1000; % mm
 
     % Wall normal
     dX = gradient(X_HOT);  dR = gradient(R_HOT);  L = hypot(dX, dR);
@@ -29,7 +29,7 @@ function writeCsv(Engine)
     R_ROOF = R_HOT + (t + Hs) .* nR;
     
     % Helix
-    if isfield(Engine,'SPIRAL_RATE'), RATE = Engine.SPIRAL_RATE / 1000; else, RATE = 0; end
+    if isfield(Engine.Cooling,'SPIRAL_RATE'), RATE = Engine.Cooling.SPIRAL_RATE / 1000; else, RATE = 0; end
     R_MID = 0.5 * (R_FLOOR + R_ROOF);
     THETA = RATE * (X_HOT - min(X_HOT));
 

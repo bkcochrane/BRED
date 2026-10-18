@@ -1,20 +1,24 @@
-function [CP_R, H_RT, S_R, G_RT] = nasa9(A_NASA, B_NASA, THI, T)
+function [cpR, hRT, sR, gRT] = nasa9(A_NASA, B_NASA, T_HI, temp)
 
-    [NUM_SPECIES, MAXINT] = size(THI);
+    [NUM_SPECIES, MAXINT] = size(T_HI);
 
-    k = min(sum(T > THI, 2) + 1, MAXINT);
-    rows = ((1:NUM_SPECIES).' - 1)*MAXINT + k;
+    k = min(sum(temp > T_HI, 2) + 1, MAXINT);
+    rows = ((1:NUM_SPECIES).' - 1) * MAXINT + k;
  
     a = A_NASA(rows,:);
     b = B_NASA(rows,:);
  
-    iT = 1/T; iT2 = iT*iT; lnT = log(T);
-    T2 = T*T; T3 = T2*T; T4 = T3*T;
+    iTemp = 1/temp;
+    iTemp2 = iTemp * iTemp;
+    lnTemp = log(temp);
+    temp2 = temp*temp;
+    temp3 = temp2*temp;
+    temp4 = temp3*temp;
  
-    CP_R = a * [iT2; iT; 1; T; T2; T3; T4 ];
-    H_RT = a * [-iT2; lnT*iT; 1; T/2; T2/3; T3/4; T4/5 ] + b(:,1)*iT;
-    S_R = a * [-iT2/2; -iT; lnT; T; T2/2; T3/3; T4/4 ] + b(:,2);
+    cpR = a * [iTemp2; iTemp; 1; temp; temp2; temp3; temp4 ];
+    hRT = a * [-iTemp2; lnTemp * iTemp; 1; temp/2; temp2/3; temp3/4; temp4/5 ] + b(:,1) * iTemp;
+    sR = a * [-iTemp2/2; -iTemp; lnTemp; temp; temp2/2; temp3/3; temp4/4 ] + b(:,2);
 
-    G_RT = H_RT - S_R;
+    gRT = hRT - sR;
     
 end

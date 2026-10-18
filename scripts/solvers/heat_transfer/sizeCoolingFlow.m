@@ -1,25 +1,88 @@
-function Engine = sizeCoolingFlow(Engine, GAS_DATA)
+function Engine = sizeCoolingFlow(Engine, PropData)
 
-    T_SAT = waterTSat(Engine.P_COOLANT);
-    MARGIN = 40; % K below saturation, design margin
-    T_LIMIT = T_SAT - MARGIN;
+    MARGIN = 40; % K below design margin
 
-    mdot = Engine.MDOT_COOLANT; % kg/s - Starting guess
+    % Test if boils
+    P_MIN = Engine.Chamber.P * 1.2;
+    if P_MIN > max(Engine.Cooling.Coolant.P_REF)
+        % Coolant is supercritical
+        tempLimitSat = Inf;
+        tempSat = Inf;
+    else
+        tempSat = Engine.Cooling.Coolant.tSat(P_MIN);
+        tempLimitSat = tempSat - MARGIN;
+    end
+    
+    % Test if cokes
+    tempLimitCoke = Inf;
+    switch upper(PropData.FUEL)
+        case 'RP-1'
+            tempLimitCoke = 560 - MARGIN;
+        case {'METHANE', 'CH4'}
+            tempLimitCoke = 850 - MARGIN;
+    end
+    
+    tempLimit = min(tempLimitSat, tempLimitCoke);
+    tempIn = Engine.Cooling.Coolant.T_SUPPLY;
+    TOLERANCE = 0.5;
 
-    for it = 1:30
-        Engine.MDOT_COOLANT = mdot;
-        Engine = calculateHeatFlux(Engine, GAS_DATA);
-        T_OUT = max(Engine.WALL_TCOOLANT);
+    mdotNew = Engine.Cooling.Coolant.mdot;
+    
+    % Damped iterative loop to find required coolant mass flow
+    for iter = 1:20
 
-        if T_OUT <= T_LIMIT, break; end
+        mdot = mdotNew;
+        Engine.Cooling.Coolant.mdot = mdot;
+        Engine = calculateHeatFlux(Engine, PropData);
+        tempOut = max(Engine.Wall.tempCoolant);
 
-        % Delta T roughly 1/mDot
-        rise_now = T_OUT - Engine.T_COOLANT_IN;
-        rise_max = T_LIMIT - Engine.T_COOLANT_IN;
-        mdot = mdot * (rise_now / rise_max) * 1.05;
+        tempError = tempOut - tempLimit;
+        if abs(tempError) <= TOLERANCE
+            break; 
+        end
+
+        % Damped proportional-integral correction step
+        alpha = 0.3; % Relaxation factor
+        correction = alpha * (tempError / (tempLimit - tempIn));
+        mdotNew = mdot * (1 + correction);
+        
+        % Bound mdot within physical limits
+        mdotNew = max(0.1 * mdot, min(3.0 * mdot, mdotNew));
     end
 
-    Engine.COOLANT_TSAT = T_SAT;
-    Engine.COOLANT_MARGIN = T_SAT - max(Engine.WALL_TCOOLANT);
+    Engine.Cooling.Coolant.tempSat = tempSat;
+    Engine.Cooling.Coolant.tempMargin = tempSat - max(Engine.Wall.tempCoolant);
+
+    if ~Engine.Cooling.REGEN_COOLING
+        Engine.Cooling.Coolant.mdot = mdot;
+        return;
+    end
+
+    % Guard against cooling flow exceeding total engine mass flow
+    if mdot >= Engine.Specs.mdot
+        warning('Required cooling mass flow (%.3f kg/s) exceeds total engine mdot. Clamping.\n', mdot);
+        mdot = Engine.Specs.mdot * 0.95;
+    end
+
+    MIN_OF_RATIO = 0.8;
+
+    if mdot <= Engine.Fuel.mdot
+        Engine.Cooling.Coolant.mdot = Engine.Fuel.mdot;
+        return;
+    else
+        requiredOxMdot = Engine.Specs.mdot - mdot;
+        requiredOFRatio = requiredOxMdot / mdot;
+
+        if requiredOFRatio < MIN_OF_RATIO
+            warning('Required O/F ratio %.3f is below the minimum allowed limit: O/F ratio clamped to %.3f.\n', requiredOFRatio, MIN_OF_RATIO);
+            Engine.Specs.ofRatio = MIN_OF_RATIO;
+        else
+            Engine.Specs.ofRatio = requiredOFRatio;
+        end
+    end
+
+    Engine.Ox.mdot = mdot * Engine.Specs.ofRatio / (Engine.Specs.ofRatio + 1);
+    Engine.Fuel.mdot = mdot / (Engine.Specs.ofRatio + 1);
+    Engine.Cooling.Coolant.mdot = Engine.Fuel.mdot;
     
 end

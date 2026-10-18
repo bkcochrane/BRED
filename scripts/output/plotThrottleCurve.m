@@ -1,78 +1,120 @@
-function plotThrottleCurve(Engine, GAS_DATA)
+function plotThrottleCurve(Engine, GasData)
 
-    nominal = createEngine(Engine, GAS_DATA);
-    AREA_THROAT = nominal.AREA_THROAT;
-    AREA_EXIT = nominal.AREA_EXIT;
-    M_EXIT = nominal.STREAM_M(end); % Exit Mach constant at fixed Area Ratio
+    NominalEngine = createEngine(Engine, GasData);
 
-    [H_REACTANTS, GAS_DATA.B_I_CIRC] = chemistrySolve(Engine.OF_RATIO);
+    NominalEngine.LOCK_GEOMETRY = true;
+    AREA_THROAT = NominalEngine.AREA_THROAT;
+    AREA_EXIT = NominalEngine.AREA_EXIT;
+
+    [H_REACTANTS, GasData.B_I_CIRC] = chemistrySolve(Engine.OF_RATIO, GasData);
 
     % Throttle sweep: 100% down to 20% chamber pressure
-    THROTTLE_PCT = linspace(1.0, 0.20, 40);
-    N = numel(THROTTLE_PCT);
+    THROTTLE_PCT = linspace(0.2, 1, 20);
+    throttles = numel(THROTTLE_PCT);
 
-    THROTTLE_THRUST = zeros(1,N);
-    THROTTLE_ISP    = zeros(1,N);
-    THROTTLE_MDOT   = zeros(1,N);
-    SEPARATED = false(1,N);
+    P_AMBIENT = linspace(0, 101325, 20);
+    pambients = numel(P_AMBIENT);
 
-    for i = 1:N
-        Pc = nominal.P_CHAMBER * THROTTLE_PCT(i);
+    THROTTLE_THRUST = zeros(pambients,throttles);
+    THROTTLE_MDOT = zeros(pambients,throttles);
+    THROTTLE_ISP = zeros(pambients,throttles);
+    SEPARATED = false(pambients,throttles);
+    
+    
 
-        % Chamber + throat at the throttled pressure (per 1 kg/s)
-        [Tc, Nj_c, prop_c] = solveChamber(Pc, GAS_DATA.NUM_SPECIES, H_REACTANTS, GAS_DATA);
-        H0 = prop_c.H;  S0_R = prop_c.S_R;
-        [Pt, Tt, Njt, ~, At_per_mdot] = solveThroat(Pc, H0, S0_R, Tc, Nj_c, GAS_DATA, 1.0);
+    for i = 1:pambients
 
-        % Actual mdot from the FIXED physical throat area
-        MDOT = AREA_THROAT / At_per_mdot;
+        for j = 1:throttles
 
-        % Exit pressure at the fixed physical area ratio
-        AREA_EXIT_PER_MDOT = AREA_EXIT / MDOT;
-        local = nominal; local.P_THROAT = Pt; local.P_CHAMBER = Pc;
-        P_EXIT = solvePressure(S0_R, H0, local, GAS_DATA, Tt, Njt, 1.0, AREA_EXIT_PER_MDOT, Pt, 'supersonic');
+            fprintf('\nSolving engine at Pa = %.0f, Throttle = %.2f', ...
+                    P_AMBIENT(i), THROTTLE_PCT(j));
 
-        [~,~,prop_e] = findEquilibrium('SP', S0_R, P_EXIT, GAS_DATA, Tt, Njt, 0);
-        V_EXIT = sqrt(max(2*(H0 - prop_e.H), 0)) * Engine.ETA_NOZZLE;
+            CurrentEngine = NominalEngine;
+            
+            CurrentEngine.P_AMBIENT = P_AMBIENT(i);
+            CurrentEngine.P_CHAMBER = CurrentEngine.P_CHAMBER * THROTTLE_PCT(j);
+    
+            % Chamber + throat at the throttled pressure (per 1 kg/s)
+            [T_CHAMBER, Nj_CHAMBER, PropellantChamber] = solveChamber(CurrentEngine.P_CHAMBER, GasData.NUM_SPECIES, H_REACTANTS, GasData);
+            H0 = PropellantChamber.H;  S0_R = PropellantChamber.S_R;
+            [~, ~, ~, ~, AREA_THROAT_PER_MDOT] = solveThroat(CurrentEngine.P_CHAMBER, H0, S0_R, T_CHAMBER, Nj_CHAMBER, GasData, 1.0);
+    
+            % Actual mdot from the fixed physical throat area
+            MDOT = AREA_THROAT / AREA_THROAT_PER_MDOT;
+            
+            CurrentEngine.MDOT = MDOT;
+            CurrentEngine = solveRealEngine(CurrentEngine, GasData);
+    
+            THROTTLE_MDOT(i, j) = CurrentEngine.MDOT;
+            THROTTLE_THRUST(i, j) = CurrentEngine.THRUST;
+            THROTTLE_ISP(i, j) = CurrentEngine.THRUST / (CurrentEngine.MDOT * 9.80665);
+    
+            CurrentEngine = applySeparation(CurrentEngine);
+            SEPARATED(i, j) = CurrentEngine.SEPARATES;
+            
+        end
+    end
+    
+    [P_Ambient_Mesh, Thrust_Mesh] = ndgrid(P_AMBIENT, THROTTLE_PCT);
+    
+    Thrust_Map = griddedInterpolant(P_Ambient_Mesh, Thrust_Mesh, THROTTLE_THRUST, 'spline');
+    Mdot_Map = griddedInterpolant(P_Ambient_Mesh, Thrust_Mesh, THROTTLE_MDOT, 'spline');
+    Isp_Map = griddedInterpolant(P_Ambient_Mesh, Thrust_Mesh, THROTTLE_ISP, 'spline');
+    
+    SEPARATED = double(SEPARATED);
+    Separation_Map = griddedInterpolant(P_Ambient_Mesh, Thrust_Mesh, SEPARATED, 'nearest');
 
-        THROTTLE_MDOT(i) = MDOT;
-        THROTTLE_THRUST(i) = MDOT * V_EXIT + (P_EXIT - Engine.P_AMBIENT) * AREA_EXIT;
-        THROTTLE_ISP(i) = THROTTLE_THRUST(i) / (MDOT * 9.80665);
-
-        % Schmucker separation check
-        P_sep = (1.88*M_EXIT - 1)^(-0.64) * Engine.P_AMBIENT;
-        SEPARATED(i) = P_EXIT < P_sep;
+    THROTTLE_PCT = THROTTLE_PCT * 100; % Convert to percentage for the plot axes
+    [Pa_PlotMesh, Th_PlotMesh] = ndgrid(P_AMBIENT, THROTTLE_PCT); % Scaled mesh for plotting
+    
+    % 2. Calculate the 3D Separation Boundary Line
+    % Scans each ambient pressure to find the exact throttle where separation begins
+    sep_Throttle = NaN(pambients, 1);
+    sep_Thrust = NaN(pambients, 1);
+    sep_Mdot = NaN(pambients, 1);
+    
+    for k = 1:pambients
+        idx = find(SEPARATED(k, :), 1, 'first');
+        if ~isempty(idx)
+            sep_Throttle(k) = THROTTLE_PCT(idx);
+            sep_Thrust(k) = THROTTLE_THRUST(k, idx) / 1000;
+            sep_Mdot(k) = THROTTLE_MDOT(k, idx);
+        end
     end
 
-    MDOT_PCT = (THROTTLE_MDOT / nominal.MDOT) * 100;
-    SEP_idx = find(SEPARATED, 1, 'first');
-
-    figure('Units','centimeters','Position',[5 5 20 12], 'Color','w');
-    neb = nebula(3);
-
-    yyaxis left
-    plot(MDOT_PCT, THROTTLE_THRUST/1000, '-', 'LineWidth',2.5, 'Color',neb(1,:));
-    ylabel('Thrust (kN)', 'Color',neb(1,:), 'FontWeight','bold');
-    ax = gca; ax.YColor = neb(1,:);
-
-    yyaxis right
-    hold on
-    if isempty(SEP_idx)
-        plot(MDOT_PCT, THROTTLE_ISP, '-', 'LineWidth',2.5, 'Color',neb(2,:));
-    else
-        plot(MDOT_PCT(1:SEP_idx),     THROTTLE_ISP(1:SEP_idx),     '-',  'LineWidth',2.5, 'Color',neb(2,:));
-        plot(MDOT_PCT(SEP_idx:end),   THROTTLE_ISP(SEP_idx:end),   '--', 'LineWidth',2.5, 'Color',neb(2,:));
-        xline(MDOT_PCT(SEP_idx), ':', 'Color','r', 'LineWidth',2, ...
-            'Label','Separation', 'LabelHorizontalAlignment','left', 'LabelVerticalAlignment', 'bottom');
-    end
-    ylabel('Specific Impulse (s)', 'Color',neb(2,:), 'FontWeight','bold');
-    ax.YColor = neb(2,:);
-
-    xlabel('Throttle Setting (% of Nominal Mass Flow)', 'FontWeight','bold');
-    ax.XColor = 'k';
-    title(sprintf('Throttle Curve (fixed A_t = %.2f cm^2, A_e = %.2f cm^2)', ...
-        AREA_THROAT*1e4, AREA_EXIT*1e4));
-    xlim([min(MDOT_PCT) 100]); grid on; box on;
-    set(gcf, 'WindowStyle', 'docked');
+    % 3. Generate the 3D Surfaces
+    figure('Units','centimeters','Position',[5 5 30 14], 'Color','w');
+    
+    % --- LEFT PANEL: THRUST SURFACE ---
+    subplot(1, 2, 1);
+    surf(Th_PlotMesh, Pa_PlotMesh, THROTTLE_THRUST / 1000, 'EdgeColor', 'none', 'FaceAlpha', 0.85);
+    hold on;
+    % Overlay the red separation boundary line
+    sep_bound_thrust = plot3(sep_Throttle, P_AMBIENT, sep_Thrust, 'r--', 'LineWidth', 3, 'DisplayName', 'Separation Boundary');
+    
+    xlabel('Throttle (%)', 'FontWeight','bold');
+    ylabel('Ambient Pressure (Pa)', 'FontWeight','bold');
+    zlabel('Thrust (kN)', 'FontWeight','bold');
+    title(sprintf('Thrust Map (fixed A_t = %.2f cm^2, A_e = %.2f cm^2)', AREA_THROAT*1e4, AREA_EXIT*1e4));
+    
+    grid on; box on; set(gca, 'YDir', 'reverse'); % Reversing Y puts sea level in front
+    colormap parula; view([-45 30]);
+    legend(sep_bound_thrust, 'Separation boundary', 'Location', 'best');
+    
+    % --- RIGHT PANEL: ISP SURFACE ---
+    subplot(1, 2, 2);
+    surf(Th_PlotMesh, Pa_PlotMesh, THROTTLE_MDOT, 'EdgeColor', 'none', 'FaceAlpha', 0.85);
+    hold on;
+    % Overlay the red separation boundary line
+    sep_bound_mdot = plot3(sep_Throttle, P_AMBIENT, sep_Mdot, 'r--', 'LineWidth', 3, 'DisplayName', 'Separation Boundary');
+    
+    xlabel('Throttle (%)', 'FontWeight','bold');
+    ylabel('Ambient Pressure (Pa)', 'FontWeight','bold');
+    zlabel('Specific Impulse (s)', 'FontWeight','bold');
+    title('Specific Impulse Map');
+    
+    grid on; box on; set(gca, 'YDir', 'reverse');
+    colormap parula; view([-45 30]);
+    legend(sep_bound_mdot, 'Separation boundary', 'Location', 'best');
     
 end

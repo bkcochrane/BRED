@@ -1,16 +1,16 @@
-function [T_CHAMBER, N_J_CHAMBER, Propellant_Chamber] = solveChamber(P_CHAMBER, NUM_SPECIES, H_REACTANTS, GAS_DATA)
+function [tempChamber, njChamber, PropellantChamber] = solveChamber(P_CHAMBER, NUM_SPECIES, hReactants, PropData)
     
     % Inital guesses
-    T_guess = 3800; % K
-    N_guess = repmat(0.1/NUM_SPECIES, NUM_SPECIES, 1);
+    guessTemp = 3800; % K
+    guessN = repmat(0.1/NUM_SPECIES, NUM_SPECIES, 1);
 
-    if isfield(GAS_DATA,'CONDENSED_LIST')
-        N_guess(GAS_DATA.CONDENSED_LIST) = 0;
+    if isfield(PropData,'CONDENSED_LIST')
+        guessN(PropData.CONDENSED_LIST) = 0;
     end
 
-    [T, N_J, Propellant_Chamber] = equilibriumSolve('HP', H_REACTANTS, P_CHAMBER, GAS_DATA, T_guess, N_guess, 0);
+    [temp, nj, PropellantChamber] = equilibriumSolve('HP', hReactants, P_CHAMBER, PropData, guessTemp, guessN, 1);
     
-    T_CHAMBER = T;
-    N_J_CHAMBER = N_J;
+    tempChamber = temp;
+    njChamber = nj;
 
 end

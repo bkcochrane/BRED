@@ -1,8 +1,7 @@
-function Engine = solveThermal(Engine, GAS_DATA)
+function Engine = solveThermal(Engine, PropData)
     
-    Engine = calculateHeatFlux(Engine, GAS_DATA);
-    Engine = sizeCoolingFlow(Engine, GAS_DATA);
+    Engine = calculateHeatFlux(Engine, PropData);
+    Engine = sizeCoolingFlow(Engine, PropData);
     Engine = coolantPressureDrop(Engine);
-    printThermalResults(Engine);
-
+    
 end

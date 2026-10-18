@@ -1,84 +1,96 @@
-function Engine = solveEngine(Engine, GasData)
+function Engine = solveEngine(Engine, PropData)
 
-    F_TARGET = Engine.TARGET_THRUST; 
-    NUM_SPECIES = GasData.NUM_SPECIES;
+    THRUST_TARGET = Engine.Specs.TARGET_THRUST; 
+    NUM_SPECIES = PropData.NUM_SPECIES;
     
-    MDOT = 1.0; % Unit mass flow
-    [H_REACTANTS, GasData.B_I_CIRC] = chemistrySolve(Engine.OF_RATIO, GasData);
+    UNIT_MDOT = 1.0; % Unit mass flow
+    [hReactants, bCirc] = chemistrySolve(Engine.Specs.ofRatio, PropData);
+    
+    PropData.bCirc = bCirc;
 
-    P_CHAMBER = Engine.P_CHAMBER;
+    P_CHAMBER = Engine.Chamber.P;
     
-    [T_CHAMBER, N_J_CHAMBER, propellant_chamber] = solveChamber(P_CHAMBER, NUM_SPECIES, H_REACTANTS, GasData);
-    H0 = propellant_chamber.H;
-    S0_R = propellant_chamber.S_R;
+    [tempChamber, njChamber, PropellantChamber] = solveChamber(P_CHAMBER, NUM_SPECIES, hReactants, PropData);
+    h0 = PropellantChamber.h;
+    s0R = PropellantChamber.sR;
     
     % Solve per unit mass flow (ideal physics)
-    [P_THROAT, T_THROAT, N_J_THROAT, V_THROAT, AREA_THROAT_PER_MDOT, C_STAR_IDEAL, MACH_T] = solveThroat(P_CHAMBER, H0, S0_R, T_CHAMBER, N_J_CHAMBER, GasData, MDOT);
-    Engine.P_THROAT = P_THROAT;
+    [pThroat, tempThroat, njThroat, vThroat, areaThroatPerMdot, cStarIdeal, machThroat] = solveThroat(P_CHAMBER, h0, s0R, tempChamber, njChamber, PropData, UNIT_MDOT);
+    Engine.Throat.p = pThroat;
 
-    if strcmp(Engine.EXIT_MODE, 'pressure')
+    if strcmp(Engine.Specs.EXIT_MODE, 'pressure')
 
-        [P_EXIT, T_EXIT, N_J_EXIT, V_EXIT_IDEAL, AREA_EXIT_PER_MDOT] = solveExit(H0, S0_R, Engine.P_EXIT, GasData, T_THROAT, N_J_THROAT, MDOT);
+        [pExit, tempExit, njExit, vExitIdeal, areaExitPerMdot] = solveExit(h0, s0R, Engine.Exit.p, PropData, tempThroat, njThroat, UNIT_MDOT);
 
     else
 
-        AREA_EXIT_PER_MDOT = Engine.AREA_RATIO_TARGET * AREA_THROAT_PER_MDOT;
-        P_EXIT = solvePressure(S0_R, H0, Engine, GasData, T_THROAT, N_J_THROAT, MDOT, AREA_EXIT_PER_MDOT, P_THROAT, 'supersonic', 1);
-        [T_EXIT, N_J_EXIT, propellant_exit] = equilibriumSolve('SP', S0_R, P_EXIT, GasData, T_THROAT, N_J_THROAT, 0);
-        V_EXIT_IDEAL = sqrt(max(2*(H0 - propellant_exit.H), 0));
+        areaExitPerMdot = Engine.Specs.AREA_RATIO_TARGET * areaThroatPerMdot;
+        pExit = solvePressure(s0R, h0, Engine, PropData, tempThroat, njThroat, UNIT_MDOT, areaExitPerMdot, pThroat, 'supersonic', 1);
+        [tempExit, njExit, propellant_exit] = equilibriumSolve('SP', s0R, pExit, PropData, tempThroat, njThroat, 0);
+        vExitIdeal = sqrt(max(2*(h0 - propellant_exit.h), 0));
 
     end
     
     % Apply efficiencies
-    C_STAR = C_STAR_IDEAL * Engine.ETA_COMBUSTION;
-    V_EXIT = V_EXIT_IDEAL * Engine.ETA_NOZZLE;
+    cStar = cStarIdeal * Engine.Efficiency.combustion;
+    vExit = vExitIdeal * Engine.Efficiency.nozzle;
     
     % Size to target thrust
-    F_PER_MDOT = V_EXIT + (P_EXIT - Engine.P_AMBIENT) * AREA_EXIT_PER_MDOT;
+    thrustPerMdot = vExit + (pExit - Engine.Specs.P_AMBIENT) * areaExitPerMdot;
 
-    if F_PER_MDOT <= 0
+    if thrustPerMdot <= 0
         error(['Ideal thrust is negative (F/mdot = %.0f N per kg/s): nozzle is ', ...
                'over-expanded at eps=%.0f, Pc=%.1f bar, Pa=%.0f Pa. ', ...
                'Raise Pc, or lower the area ratio, Pa or exit pressure ratio.'], ...
-               F_PER_MDOT, Engine.AREA_RATIO, Engine.P_CHAMBER/1e5, Engine.P_AMBIENT);
+               thrustPerMdot, Engine.Specs.areaRatio, Engine.Chamber.P/1e5, Engine.Specs.P_AMBIENT);
+    end
+    
+    if ~isfield(Engine.Geometry, 'LOCK') || Engine.Geometry.LOCK == false
+
+        mdot = THRUST_TARGET / thrustPerMdot; % kg/s
+        areaThroat = areaThroatPerMdot * mdot / Engine.Efficiency.combustion / Engine.Efficiency.cdThroat; % m 2
+        areaExit = areaExitPerMdot * mdot / Engine.Efficiency.combustion / Engine.Efficiency.cdThroat; % m 2
+        Engine.Throat.area = areaThroat;
+        Engine.Exit.area = areaExit;
+        Engine.Throat.diameter = 2*sqrt(areaThroat/pi);
+        Engine.Exit.diameter = 2*sqrt(areaExit/pi);
+        Engine.Specs.areaRatio = areaExit / areaThroat;
+
+    else
+
+        mdot = (Engine.Throat.area * Engine.Efficiency.combustion * Engine.Efficiency.cdThroat) / areaThroatPerMdot;
+
     end
 
-    MDOT = F_TARGET / F_PER_MDOT; % kg/s
-    AREA_THROAT = AREA_THROAT_PER_MDOT * MDOT / Engine.ETA_COMBUSTION / Engine.DISCHARGE_COEFF; %m2
-    AREA_EXIT = AREA_EXIT_PER_MDOT * MDOT / Engine.ETA_COMBUSTION / Engine.DISCHARGE_COEFF; %m2
-    F = MDOT * F_PER_MDOT; % N
-    ISP = F / (MDOT * 9.80665); % s
+    thrust = mdot * thrustPerMdot; % N
+    Isp = thrust / (mdot * 9.80665); % s
     
-    Engine.MDOT = MDOT;
-    Engine.MDOT_OX = MDOT * Engine.OF_RATIO / (Engine.OF_RATIO + 1);
-    Engine.MDOT_FUEL = MDOT / (Engine.OF_RATIO + 1);
-    Engine.THRUST = F;
-    Engine.ISP = ISP;
-    Engine.C_STAR = C_STAR;
-    Engine.C_STAR_IDEAL = C_STAR_IDEAL;
-    Engine.AREA_RATIO = AREA_EXIT / AREA_THROAT;
+    Engine.Specs.mdot = mdot;
+    Engine.Ox.mdot = mdot * Engine.Specs.ofRatio / (Engine.Specs.ofRatio + 1);
+    Engine.Fuel.mdot = mdot / (Engine.Specs.ofRatio + 1);
+    Engine.Specs.thrust = thrust;
+    Engine.Specs.Isp = Isp;
+    Engine.Specs.cStar = cStar;
+    Engine.Specs.cStarIdeal = cStarIdeal;
     
-    Engine.T_CHAMBER = T_CHAMBER;
-    Engine.CP_CHAMBER = propellant_chamber.CP;
-    Engine.T_THROAT = T_THROAT;
-    Engine.T_EXIT = T_EXIT;
-    Engine.P_THROAT = P_THROAT;
-    Engine.P_EXIT = P_EXIT;
-    Engine.V_THROAT = V_THROAT;
-    Engine.V_EXIT = V_EXIT;
-    Engine.MACH_THROAT = MACH_T;
+    Engine.Chamber.temp = tempChamber;
+    Engine.Chamber.cp = PropellantChamber.cp;
+    Engine.Throat.temp = tempThroat;
+    Engine.Exit.temp = tempExit;
+    Engine.Throat.p = pThroat;
+    Engine.Exit.p = pExit;
+    Engine.Throat.v = vThroat;
+    Engine.Exit.v = vExit;
+    Engine.Throat.mach = machThroat;
     
-    Engine.AREA_THROAT = AREA_THROAT;
-    Engine.AREA_EXIT = AREA_EXIT;
-    Engine.DIAMETER_THROAT = 2*sqrt(AREA_THROAT/pi);
-    Engine.DIAMETER_EXIT = 2*sqrt(AREA_EXIT/pi);
-    
-    Engine.MBAR = propellant_chamber.MBAR;
-    Engine.RHO_CHAMBER = Engine.P_CHAMBER / ((GasData.R / propellant_chamber.MBAR) * T_CHAMBER);
-    Engine.H0 = H0;
-    Engine.S0_R = S0_R;
-    Engine.N_J_CHAMBER = N_J_CHAMBER;
-    Engine.N_J_THROAT = N_J_THROAT;
-    Engine.N_J_EXIT = N_J_EXIT;
+    Engine.Chamber.mbar = PropellantChamber.mbar;
+    Engine.Chamber.rho = Engine.Chamber.P / ((PropData.R / PropellantChamber.mbar) * tempChamber);
+    Engine.Chamber.h0 = h0;
+    Engine.Chamber.s0R = s0R;
+    Engine.Chamber.mu = PropellantChamber.mu;
+    Engine.Chamber.k = PropellantChamber.k;
+    Engine.Chamber.nj = njChamber;
+    Engine.Throat.nj = njThroat;
+    Engine.Exit.nj = njExit;
 
 end

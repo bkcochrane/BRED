@@ -1,35 +1,35 @@
 % -----------------------------------------------------------------------
 % Throat solve - maximise mass flux - G = rho * v (P)
 % ------------------------------------------------------------------------
-function [P_THROAT, T_THROAT, N_J_THROAT, V_T, AREA_THROAT, C_STAR, MACH_T] = solveThroat(P_CHAMBER, H0, S0_R, T_CHAMBER, N_J_CHAMBER, GAS_DATA, MDOT)
+function [pThroat, tempThroat, njThroat, vThroat, areaThroat, cStar, machThroat] = solveThroat(P_CHAMBER, h0, s0R, tempChamber, njChamber, PropData, mdot)
         
     % Pressure sweep to find throat
-    P_SWEEP = P_CHAMBER * (0.9 : -0.01 : 0.2);
-    G  = zeros(size(P_SWEEP));
+    pSweep = P_CHAMBER * (0.9 : -0.01 : 0.2);
+    massFlux = zeros(size(pSweep));
     
-    T = T_CHAMBER;
-    N_J = N_J_CHAMBER;
+    temp = tempChamber;
+    nj = njChamber;
     
-    for i = 1:numel(P_SWEEP)
-        [G(i), T, N_J] = findMassFlux(P_SWEEP(i), S0_R, H0, GAS_DATA, T, N_J);
+    for i = 1:numel(pSweep)
+        [massFlux(i), temp, nj] = findMassFlux(pSweep(i), s0R, h0, PropData, temp, nj);
     end
     
     % Find location of peak on the coarse sweep
-    [~,ip] = max(G);
-    lo = P_SWEEP(min(ip+1,end)); % Lower pressure bound
-    hi = P_SWEEP(max(ip-1,1));   % Higher pressure bound
+    [~,ip] = max(massFlux);
+    lo = pSweep(min(ip+1,end)); % Lower pressure bound
+    hi = pSweep(max(ip-1,1));   % Higher pressure bound
 
     % Refine peak location by maximizing mass flux directly
-    flux_err = @(P) -findMassFlux(P, S0_R, H0, GAS_DATA, T_CHAMBER, N_J_CHAMBER);
-    P_THROAT = fminbnd(flux_err, lo, hi);
+    negMassFlux = @(p) -findMassFlux(p, s0R, h0, PropData, tempChamber, njChamber);
+    pThroat = fminbnd(negMassFlux, lo, hi);
     
     % Get propellant properties at throat
-    [T_THROAT, N_J_THROAT, Propellant_Throat] = equilibriumSolve('SP', S0_R, P_THROAT, GAS_DATA, T_CHAMBER, N_J_CHAMBER, 0);
+    [tempThroat, njThroat, PropellantThroat] = equilibriumSolve('SP', s0R, pThroat, PropData, tempChamber, njChamber, 0);
     
-    V_T = sqrt(max(2 * (H0 - Propellant_Throat.H), 0));
-    AREA_THROAT = MDOT / (Propellant_Throat.RHO * V_T);
-    C_STAR = P_CHAMBER * AREA_THROAT / MDOT;
+    vThroat = sqrt(max(2 * (h0 - PropellantThroat.h), 0));
+    areaThroat = mdot / (PropellantThroat.rho * vThroat);
+    cStar = P_CHAMBER * areaThroat / mdot;
     
-    [MACH_T, ~] = findMach(P_THROAT, S0_R, H0, GAS_DATA, T_CHAMBER, N_J_CHAMBER);
+    [machThroat, ~] = findMach(pThroat, s0R, h0, PropData, tempChamber, njChamber);
 
 end

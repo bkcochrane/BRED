@@ -1,10 +1,10 @@
-function [G, T, N_J] = findMassFlux(P, S0_R, H0, GAS_DATA, T, N_J, IS_FROZEN)
+function [massFlux, temp, nj] = findMassFlux(p, s0R, h0, PropData, temp, nj, isFrozen)
+    
+    if nargin < 7; isFrozen = false; end
 
-    if nargin < 7;IS_FROZEN = false;end
+    [temp, nj, Propellant] = equilibriumSolve('SP', s0R, p, PropData, temp, nj, 0, isFrozen);
 
-    [T, N_J, Propellant] = equilibriumSolve('SP', S0_R, P, GAS_DATA, T, N_J, 0, IS_FROZEN);
-
-    V  = sqrt(max(2 * (H0 - Propellant.H), 0));
-    G  = Propellant.RHO * V;
+    v = sqrt(max(2 * (h0 - Propellant.h), 0));
+    massFlux = Propellant.rho * v;
 
 end

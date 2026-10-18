@@ -1,104 +1,106 @@
 function Engine = calculateProfile(Engine)
 
-    VOLUME_CHAMBER = Engine.L_STAR * Engine.AREA_THROAT; % m3
-    AREA_CHAMBER = Engine.AREA_THROAT * Engine.CONTRACTION_RATIO; % m2
-    DIAMETER_CHAMBER = 2*sqrt(AREA_CHAMBER/pi); % m
-    DIAMETER_THROAT = 2*sqrt(Engine.AREA_THROAT/pi); % m
-    DIAMETER_EXIT = 2*sqrt(Engine.AREA_EXIT/pi); % m
+    volumeChamber = Engine.Geometry.LStar * Engine.Throat.area; % m3
+    areaChamber = Engine.Throat.area * Engine.Geometry.CONTRACTION_RATIO_TARGET; % m2
+    diameterChamber = 2*sqrt(areaChamber/pi); % m
+    diameterThroat = 2*sqrt(Engine.Throat.area/pi); % m
+    diameterExit = 2*sqrt(Engine.Exit.area/pi); % m
 
     % ------------------------------------------------------------------------
     % Calculate converging section profile 
     % using two blends and a converging angle beta
     % ------------------------------------------------------------------------
     
-    BETA = Engine.BETA;
-    RADIUS_THROAT = DIAMETER_THROAT / 2;
-    RADIUS_CHAMBER = DIAMETER_CHAMBER / 2;
+    betaAngle = Engine.Geometry.BETA_ANGLE;
+    radiusThroat = diameterThroat / 2;
+    radiusChamber = diameterChamber / 2;
     
-    THROAT_FACTOR = Engine.BLEND_RADIUS_THROAT_FACTOR;
-    CHAMBER_FACTOR = Engine.BLEND_RADIUS_CHAMBER_FACTOR;
+    throatFactor = Engine.Geometry.BLEND_RADIUS_THROAT_FACTOR;
+    chamberFactor = Engine.Geometry.BLEND_RADIUS_CHAMBER_FACTOR;
 
-    RADIAL_SPAN = RADIUS_CHAMBER - RADIUS_THROAT;
-    BLEND_RADIUS_THROAT = THROAT_FACTOR * RADIUS_THROAT;
-    if BLEND_RADIUS_THROAT * (1-cos(BETA)) > 0.45 * RADIAL_SPAN
-        BLEND_RADIUS_THROAT = 0.45 * RADIAL_SPAN / (1-cos(BETA));
+    radialSpan = radiusChamber - radiusThroat;
+    blendRadiusThroat = throatFactor * radiusThroat;
+    if blendRadiusThroat * (1-cos(betaAngle)) > 0.45 * radialSpan
+        blendRadiusThroat = 0.45 * radialSpan / (1-cos(betaAngle));
     end
     
     % Blend to throat
-    THETA = linspace(0, BETA, 50);
-    X_T_ARC = -BLEND_RADIUS_THROAT * sin(THETA);
-    R_T_ARC = RADIUS_THROAT + BLEND_RADIUS_THROAT * (1 - cos(THETA));
-    X_1 = X_T_ARC(end);
-    R_1 = R_T_ARC(end);
+    theta = linspace(0, betaAngle, 20);
+    xThroatArc = -blendRadiusThroat * sin(theta);
+    rThroatArc = radiusThroat + blendRadiusThroat * (1 - cos(theta));
+    x1 = xThroatArc(end);
+    r1 = rThroatArc(end);
 
-    CR = Engine.CONTRACTION_RATIO;
-    CR_FLOOR = 2;
+    contractionRatio = Engine.Geometry.CONTRACTION_RATIO_TARGET;
+    contractionRatioFloor = 2;
     
     for outer = 1:20
-        AREA_CHAMBER = Engine.AREA_THROAT * CR;
-        DIAMETER_CHAMBER = 2*sqrt(AREA_CHAMBER/pi);
-        RADIUS_CHAMBER = DIAMETER_CHAMBER / 2;
-
-        MAX_CHAMBER_DROP = 0.5 * RADIAL_SPAN;
-        BLEND_RADIUS_CHAMBER = CHAMBER_FACTOR * RADIUS_CHAMBER;
-        BLEND_DROP = BLEND_RADIUS_CHAMBER * (1 - cos(BETA));
         
-        if BLEND_DROP > MAX_CHAMBER_DROP
-            BLEND_RADIUS_CHAMBER = MAX_CHAMBER_DROP / (1 - cos(BETA));
-        end
+        areaChamber = Engine.Throat.area * contractionRatio;
+        diameterChamber = 2*sqrt(areaChamber/pi);
+        radiusChamber = diameterChamber / 2;
 
-        R_3 = RADIUS_CHAMBER - BLEND_RADIUS_CHAMBER * (1 - cos(BETA));
-        if R_3 <= R_1
-            BLEND_RADIUS_CHAMBER = 0.8 * (RADIUS_CHAMBER - R_1) / (1 - cos(BETA));
-            R_3 = RADIUS_CHAMBER - BLEND_RADIUS_CHAMBER * (1 - cos(BETA));
+        maxChamberDrop = 0.5 * radialSpan;
+        blendRadiusChamber = chamberFactor * radiusChamber;
+        blendDrop = blendRadiusChamber * (1 - cos(betaAngle));
+        
+        if blendDrop > maxChamberDrop
+            blendRadiusChamber = maxChamberDrop / (1 - cos(betaAngle));
         end
-        X_2 = X_1 - (R_3 - R_1) / tan(BETA);
+        
+        r3 = radiusChamber - blendRadiusChamber * (1 - cos(betaAngle));
+        if r3 <= r1
+            blendRadiusChamber = 0.8 * (radiusChamber - r1) / (1 - cos(betaAngle));
+            r3 = radiusChamber - blendRadiusChamber * (1 - cos(betaAngle));
+        end
+        x2 = x1 - (r3 - r1) / tan(betaAngle);
         
         % Blend to chamber
-        PHI = linspace(BETA, 0, 50);
-        X_C_CENTRE = X_2 - BLEND_RADIUS_CHAMBER * sin(BETA);
-        X_C_ARC = X_C_CENTRE + BLEND_RADIUS_CHAMBER * sin(PHI);
-        R_C_ARC = RADIUS_CHAMBER - BLEND_RADIUS_CHAMBER * (1 - cos(PHI));
+        phi = linspace(betaAngle, 0, 10);
+        xChamberCentre = x2 - blendRadiusChamber * sin(betaAngle);
+        xChamberArc = xChamberCentre + blendRadiusChamber * sin(phi);
+        rChamberArc = radiusChamber - blendRadiusChamber * (1 - cos(phi));
 
-        N_CONE = 30;
-        X_CONE = linspace(X_1, X_2, N_CONE);
-        R_CONE = linspace(R_1, R_3, N_CONE);
+        numConePoints = 10;
+        xCone = linspace(x1, x2, numConePoints);
+        rCone = linspace(r1, r3, numConePoints);
         
         % Combine profile
-        X_CONVERGING = [X_T_ARC, X_CONE, X_C_ARC];
-        R_CONVERGING = [R_T_ARC, R_CONE, R_C_ARC];
+        xConverging = [xThroatArc, xCone, xChamberArc];
+        rConverging = [rThroatArc, rCone, rChamberArc];
         
         % Calculate volumes
-        [Xs, idx] = sort(X_CONVERGING);
-        VOLUME_CONVERGING = pi * trapz(Xs, R_CONVERGING(idx).^2);
-        VOLUME_CHAMBER_CYLINDRICAL = VOLUME_CHAMBER - VOLUME_CONVERGING;
+        [xs, idx] = sort(xConverging);
+        volumeConverging = pi * trapz(xs, rConverging(idx).^2);
+        volumeChamberCylindrical = volumeChamber - volumeConverging;
         
         % Adjust parameters if invalid geometry
-        if VOLUME_CHAMBER_CYLINDRICAL > 0
+        if volumeChamberCylindrical > 0
             break;
         end
 
-        if CR > CR_FLOOR
-            CR = max(CR_FLOOR, CR - 0.5);
+        if contractionRatio > contractionRatioFloor
+            contractionRatio = max(contractionRatioFloor, contractionRatio - 0.5);
         else
-            CHAMBER_FACTOR = CHAMBER_FACTOR * 0.8;
+            chamberFactor = chamberFactor * 0.8;
         end
+        
     end
     
-    if VOLUME_CHAMBER_CYLINDRICAL <= 0
+    if volumeChamberCylindrical <= 0
 
-        warning('Cannot close chamber volume even at CR=%.1f, min blend (L*=%.2f) — raise L*', CR, Engine.L_STAR);
-        LENGTH_CHAMBER_CYLINDRICAL = 0;
+        warning('Cannot close chamber volume even at CR=%.1f, min blend (L*=%.2f) — raise L*\n', contractionRatio, Engine.Geometry.LStar);
+        lengthChamberCylindrical = 0;
 
     else
         
-        LENGTH_CHAMBER_CYLINDRICAL = VOLUME_CHAMBER_CYLINDRICAL / AREA_CHAMBER;
+        lengthChamberCylindrical = volumeChamberCylindrical / areaChamber;
 
     end
     
-    Engine.CONTRACTION_RATIO_USED = CR;
-    LENGTH_CHAMBER = min(X_CONVERGING) - LENGTH_CHAMBER_CYLINDRICAL;
-        
+    Engine.Geometry.contractionRatio = contractionRatio;
+    lengthChamber = min(xConverging) - lengthChamberCylindrical;
+       
     % ------------------------------------------------------------------------
     
     % Diverging profile calculator - using Rao's TOP bell design
@@ -117,69 +119,72 @@ function Engine = calculateProfile(Engine)
     THETA_E_90 = [11.5, 10.5, 8.0, 7.0, 6.5, 6.0, 6.0, 6.0];
     % ------------------------------------------------------------------------
     
-    switch Engine.CONE_PERCENT
-        case 60, THETA_N_SWITCH = THETA_N_60; THETA_E_SWITCH = THETA_E_60;
-        case 80, THETA_N_SWITCH = THETA_N_80; THETA_E_SWITCH = THETA_E_80;
-        case 90, THETA_N_SWITCH = THETA_N_90; THETA_E_SWITCH = THETA_E_90;
+    switch Engine.Geometry.CONE_PERCENT
+        case 60, thetaN = THETA_N_60; thetaE = THETA_E_60;
+        case 80, thetaN = THETA_N_80; thetaE = THETA_E_80;
+        case 90, thetaN = THETA_N_90; thetaE = THETA_E_90;
         otherwise, error('CONE_PERCENT must be 60, 80, or 90');
     end
     
-    THETA_N = deg2rad(interp1(EXP_RATIO_CASES, THETA_N_SWITCH, Engine.AREA_RATIO, 'pchip'));
-    THETA_E = deg2rad(interp1(EXP_RATIO_CASES, THETA_E_SWITCH, Engine.AREA_RATIO, 'pchip'));
-    Engine.THETA_E = THETA_E;
+    thetaN = deg2rad(interp1(EXP_RATIO_CASES, thetaN, Engine.Specs.areaRatio, 'pchip'));
+    thetaE = deg2rad(interp1(EXP_RATIO_CASES, thetaE, Engine.Specs.areaRatio, 'pchip'));
+    Engine.Geometry.thetaE = thetaE;
     
     % Throat arc downstream
-    R_ARC_D = 0.382 * RADIUS_THROAT;
-    ANGLE = linspace(-pi/2, THETA_N - pi/2, 50);
-    X_DIV_ARC = R_ARC_D * cos(ANGLE);
-    R_DIV_ARC = RADIUS_THROAT + R_ARC_D + R_ARC_D * sin(ANGLE);
+    rArcD = 0.382 * radiusThroat;
+    angleDiverging = linspace(-pi/2, thetaN - pi/2, 20);
+    xDivergingArc = rArcD * cos(angleDiverging);
+    rDivergingArc = radiusThroat + rArcD + rArcD * sin(angleDiverging);
     
     % Inflection point between blend and parabola
-    X_N = X_DIV_ARC(end);
-    R_N = R_DIV_ARC(end);
+    xInflection = xDivergingArc(end);
+    rInflection = rDivergingArc(end);
     
     % Nozzle length
-    R_EXIT = sqrt(Engine.AREA_RATIO) * RADIUS_THROAT;
-    L_CONE15 = (R_EXIT - RADIUS_THROAT) / tan(deg2rad(15));
-    L_NOZZLE = Engine.CONE_PERCENT * L_CONE15 / 100;
+    rExit = sqrt(Engine.Specs.areaRatio) * radiusThroat;
+    lengthCone15 = (rExit - radiusThroat) / tan(deg2rad(15));
+    lengthNozzle = Engine.Geometry.CONE_PERCENT * lengthCone15 / 100;
     
     % ------------------------------------------------------------------------
     % Parabola
     % ------------------------------------------------------------------------
     
-    X_EXIT = L_NOZZLE;
-    m_N = tan(THETA_N);
-    m_E = tan(THETA_E);
+    xExit = lengthNozzle;
+    mN = tan(thetaN);
+    mE = tan(thetaE);
     
     % Control points
-    X_CP = (R_EXIT - R_N + m_N * X_N - m_E * X_EXIT) / (m_N - m_E);
-    R_CP = R_N + m_N*(X_CP - X_N);
+    xControlPoints = (rExit - rInflection + mN * xInflection - mE * xExit) / (mN - mE);
+    rControlPoints = rInflection + mN*(xControlPoints - xInflection);
     
     % Create bezier curve
     t = linspace(0, 1, 80).';
-    X_PARA = (1-t).^2 * X_N + 2*(1-t).*t * X_CP + t.^2 * X_EXIT;
-    R_PARA = (1-t).^2 * R_N + 2*(1-t).*t * R_CP + t.^2 * R_EXIT;
+    xParabolic = (1-t).^2 * xInflection + 2*(1-t).*t * xControlPoints + t.^2 * xExit;
+    rParabolic = (1-t).^2 * rInflection + 2*(1-t).*t * rControlPoints + t.^2 * rExit;
     
     % Combine profile
-    Engine.X_DIVERGING = [X_DIV_ARC, X_PARA.'];
-    Engine.R_DIVERGING = [R_DIV_ARC, R_PARA.'];
+    Engine.Geometry.xDiverging = [xDivergingArc, xParabolic.'];
+    Engine.Geometry.rDiverging = [rDivergingArc, rParabolic.'];
 
     % ------------------------------------------------------------------------
     % Full
     % ------------------------------------------------------------------------
     
-    N_CYL = 20;
-    X_CYL = linspace(LENGTH_CHAMBER, min(X_CONVERGING), N_CYL);
-    R_CYL = RADIUS_CHAMBER * ones(1, N_CYL);
+    numCylidricalPoints = 2;
+    xCylindrical = linspace(lengthChamber, min(xConverging), numCylidricalPoints);
+    rCylindrical = radiusChamber * ones(1, numCylidricalPoints);
 
-    Engine.X_COORDINATES = [X_CYL, flip(X_CONVERGING), Engine.X_DIVERGING(:,2:end)];
-    Engine.R_COORDINATES = [R_CYL, flip(R_CONVERGING), Engine.R_DIVERGING(:,2:end)];
+    Engine.Geometry.xCoordinates = [xCylindrical, flip(xConverging), Engine.Geometry.xDiverging(:,2:end)];
+    Engine.Geometry.rCoordinates = [rCylindrical, flip(rConverging), Engine.Geometry.rDiverging(:,2:end)];
 
-    Engine.DIAMETER_CHAMBER = DIAMETER_CHAMBER;
-    Engine.DIAMETER_THROAT = DIAMETER_THROAT;
-    Engine.DIAMETER_EXIT = DIAMETER_EXIT;
-    Engine.VOLUME_CHAMBER = VOLUME_CHAMBER;
-    Engine.LENGTH_CHAMBER = -LENGTH_CHAMBER;
-    Engine.NOZZLE_LENGTH = max(Engine.X_DIVERGING);
-
+    Engine.Chamber.diameter = diameterChamber;
+    Engine.Throat.diameter = diameterThroat;
+    Engine.Exit.diameter = diameterExit;
+    Engine.Chamber.volume = volumeChamber;
+    Engine.Chamber.area = areaChamber;
+    Engine.Geometry.volumeConverging = volumeConverging;
+    Engine.Geometry.lengthChamber = -lengthChamber;
+    Engine.Geometry.lengthNozzle = max(Engine.Geometry.xDiverging);
+    Engine.Geometry.lengthEngine = Engine.Geometry.lengthNozzle + Engine.Geometry.lengthChamber;
+    
 end

@@ -1,25 +1,27 @@
-function h = coolantH(Engine, CHANNEL_WIDTH, CHANNEL_HEIGHT, T_LOCAL)
+function h = coolantH(Engine, widthChannel, heightChannel, tempLocal)
 
-    LAND_WIDTH = Engine.LAND_WIDTH;
-    NUM_CHANNELS = Engine.NUM_CHANNELS;
+    LAND_WIDTH = Engine.Cooling.LAND_WIDTH;
+    numChannels = Engine.Cooling.numChannels;
 
-    AREA_CHANNEL = CHANNEL_WIDTH * CHANNEL_HEIGHT;
-    DIAMETER_HYDRAULIC  = 2 * CHANNEL_WIDTH * CHANNEL_HEIGHT / (CHANNEL_WIDTH + CHANNEL_HEIGHT);
+    areaChannel = widthChannel * heightChannel;
+    diameterHydraulic  = 2 * widthChannel * heightChannel / (widthChannel + heightChannel);
 
-    V  = Engine.MDOT_COOLANT / (Engine.RHO_COOLANT * AREA_CHANNEL * NUM_CHANNELS);
-    MU = Engine.MU_COOLANT * exp(-0.020*(T_LOCAL - 300));
-    Re = Engine.RHO_COOLANT * V * DIAMETER_HYDRAULIC / MU;
-    Pr = Engine.MU_COOLANT * Engine.CP_COOLANT / Engine.K_COOLANT;
+    Coolant = Engine.Cooling.Coolant;
+
+    v = Coolant.mdot / (Coolant.RHO * areaChannel * numChannels);
+    mu = Coolant.MU * exp(-0.020*(tempLocal - 300));
+    reynolds = Coolant.RHO * v * diameterHydraulic / mu;
+    prandtl = Coolant.MU * Coolant.CP / Coolant.K;
     
     % Sieder-Tate
-    Nu = 0.027 * Re^0.8 * Pr^(1/3);
-    h_BARE = Nu * Engine.K_COOLANT / DIAMETER_HYDRAULIC;
+    nu = 0.027 * reynolds^0.8 * prandtl^(1/3);
+    hBare = nu * Coolant.K / diameterHydraulic;
 
     % Fin efficiency of the lands
-    m = sqrt(2 * h_BARE / (Engine.WALL_K * LAND_WIDTH));
-    ETA = tanh(m * CHANNEL_HEIGHT) / (m * CHANNEL_HEIGHT);
-    AREA_EFF_RATIO = (CHANNEL_WIDTH + 2 * ETA * CHANNEL_HEIGHT) / (CHANNEL_WIDTH + LAND_WIDTH);
+    m = sqrt(2 * hBare / (Engine.Wall.K * LAND_WIDTH));
+    eta = tanh(m * heightChannel) / (m * heightChannel);
+    areaEffectiveRatio = (widthChannel + 2 * eta * heightChannel) / (widthChannel + LAND_WIDTH);
 
-    h = h_BARE * AREA_EFF_RATIO;
+    h = hBare * areaEffectiveRatio;
 
 end

@@ -1,87 +1,87 @@
-function [MACH, a] = findMach(P, S0_R, H0, GAS_DATA, T0, N_J0)
+function [mach, a] = findMach(p, s0R, h0, PropData, temp0, nj0)
 
-    [T, N_J, Propellant] = equilibriumSolve('SP', S0_R, P, GAS_DATA, T0, N_J0, 0);
+    [temp, nj, Propellant] = equilibriumSolve('SP', s0R, p, PropData, temp0, nj0, 0);
 
-    V  = sqrt(max(2*(H0 - Propellant.H), 0));
+    v = sqrt(max(2*(h0 - Propellant.h), 0));
     
-    A_IJ = GAS_DATA.A_IJ;
+    A_IJ = PropData.A_IJ;
     NUM_ELEM = size(A_IJ, 1);
     
     % Separate gaseous components
-    if isfield(GAS_DATA, 'CONDENSED_LIST')
-        CANDIDATES = GAS_DATA.CONDENSED_LIST(:).';
+    if isfield(PropData, 'CONDENSED_LIST')
+        CANDIDATES = PropData.CONDENSED_LIST(:).';
     else
         CANDIDATES = [];
     end
-    C = CANDIDATES(N_J(CANDIDATES) > 1e-10);
-    G = setdiff(1:GAS_DATA.NUM_SPECIES, CANDIDATES);
-    NC = numel(C);
+    candidates = CANDIDATES(nj(CANDIDATES) > 1e-10);
+    gasIdx = setdiff(1:PropData.NUM_SPECIES, CANDIDATES);
+    numCandidates = numel(candidates);
     
-    N_g = sum(N_J(G));
+    nG = sum(nj(gasIdx));
     
     % Build Jacobian matrix
-    iN = NUM_ELEM + NC + 1;
-    M = zeros(iN, iN);
-    M(1:NUM_ELEM, 1:NUM_ELEM) = (A_IJ(:, G) .* N_J(G).') * A_IJ(:, G).';
-    M(1:NUM_ELEM, 1:NUM_ELEM) = M(1:NUM_ELEM, 1:NUM_ELEM) + eye(NUM_ELEM) * 1e-15;
+    iNum = NUM_ELEM + numCandidates + 1;
+    m = zeros(iNum, iNum);
+    m(1:NUM_ELEM, 1:NUM_ELEM) = (A_IJ(:, gasIdx) .* nj(gasIdx).') * A_IJ(:, gasIdx).';
+    m(1:NUM_ELEM, 1:NUM_ELEM) = m(1:NUM_ELEM, 1:NUM_ELEM) + eye(NUM_ELEM) * 1e-15;
 
-    for q = 1:NC
-        M(1:NUM_ELEM, NUM_ELEM + q) = A_IJ(:, C(q));
-        M(NUM_ELEM + q, 1:NUM_ELEM) = A_IJ(:, C(q)).';
+    for q = 1:numCandidates
+        m(1:NUM_ELEM, NUM_ELEM + q) = A_IJ(:, candidates(q));
+        m(NUM_ELEM + q, 1:NUM_ELEM) = A_IJ(:, candidates(q)).';
     end
 
-    M(1:NUM_ELEM, iN) = A_IJ(:, G) * N_J(G);
-    M(iN, 1:NUM_ELEM) = M(1:NUM_ELEM, iN).';
-    M(iN, iN) = 0;
+    m(1:NUM_ELEM, iNum) = A_IJ(:, gasIdx) * nj(gasIdx);
+    m(iNum, 1:NUM_ELEM) = m(1:NUM_ELEM, iNum).';
+    m(iNum, iNum) = 0;
     
     % --------------------------------------------------------------------
     % Derivative with respect to ln(P)
-    B_P = zeros(iN, 1);
-    B_P(1:NUM_ELEM) = A_IJ(:, G) * N_J(G);
-    B_P(iN) = N_g;
+    bP = zeros(iNum, 1);
+    bP(1:NUM_ELEM) = A_IJ(:, gasIdx) * nj(gasIdx);
+    bP(iNum) = nG;
 
-    X_P = M \ B_P;
-    dlnNg_dlnP = X_P(iN);
-    dlnV_dlnP_T = dlnNg_dlnP - 1;
+    xP = m \ bP;
+    dLnNG_dLnP = xP(iNum);
+    dLnV_dLnP_T = dLnNG_dLnP - 1;
     % --------------------------------------------------------------------
     % Derivative with respect to ln(T) at constant P
-    [CP_R, H_RT, ~, ~] = nasa9(GAS_DATA.A_NASA, GAS_DATA.B_NASA, GAS_DATA.T_HI, T);
+    [cpR, hRT, ~, ~] = nasa9(PropData.A_NASA, PropData.B_NASA, PropData.T_HI, temp);
     
-    B_T = zeros(iN, 1);
-    B_T(1:NUM_ELEM) = -A_IJ(:, G) * (N_J(G) .* H_RT(G));
-    for q = 1:NC
-        B_T(NUM_ELEM + q) = -H_RT(C(q));
+    bTemp = zeros(iNum, 1);
+    bTemp(1:NUM_ELEM) = -A_IJ(:, gasIdx) * (nj(gasIdx) .* hRT(gasIdx));
+    for q = 1:numCandidates
+        bTemp(NUM_ELEM + q) = -hRT(candidates(q));
     end
-    B_T(iN) = -sum(N_J(G) .* H_RT(G));
+    bTemp(iNum) = -sum(nj(gasIdx) .* hRT(gasIdx));
 
-    X_T = M \ B_T;
-    pi_T = X_T(1:NUM_ELEM);
-    dnC_dlnT_P = X_T(NUM_ELEM + 1 : NUM_ELEM + NC); % Condensed derivatives
-    dlnNg_dlnT = X_T(iN);
-    dlnV_dlnT_P = dlnNg_dlnT + 1;
+    xTemp = m \ bTemp;
+    piTemp = xTemp(1:NUM_ELEM);
+    dnC_dLnT_P = xTemp(NUM_ELEM + 1 : NUM_ELEM + numCandidates); % Condensed derivatives
+    dLnNg_dLnT = xTemp(iNum);
+    dLnV_dLnT_P = dLnNg_dLnT + 1;
     % --------------------------------------------------------------------
 
-    dlnNj_dlnT = dlnNg_dlnT + A_IJ(:, G).' * pi_T + H_RT(G);
+    dlnNj_dlnT = dLnNg_dLnT + A_IJ(:, gasIdx).' * piTemp + hRT(gasIdx);
 
-    R = GAS_DATA.R;
+    R = PropData.R;
 
     % Equilibrium Cp
-    Cp_FROZEN = sum(N_J .* CP_R) * R;
-    Cp_G = sum(N_J(G) .* H_RT(G) .* dlnNj_dlnT) * R; 
-    Cp_C = sum(H_RT(C) .* dnC_dlnT_P) * R;
-    Cp_EQUILIBRIUM = Cp_FROZEN + Cp_G + Cp_C;
+    cpFrozen = sum(nj .* cpR) * R;
+    cpGas = sum(nj(gasIdx) .* hRT(gasIdx) .* dlnNj_dlnT) * R; 
+    cpCondensed = sum(hRT(candidates) .* dnC_dLnT_P) * R;
+    cpEquilibrium = cpFrozen + cpGas + cpCondensed;
     
     % Equilibrium Cv
-    Cv_EQUILIBRIUM = Cp_EQUILIBRIUM + (N_g * R) * (dlnV_dlnT_P^2) / dlnV_dlnP_T;
+    cvEquilibrium = cpEquilibrium + (nG * R) * (dLnV_dLnT_P^2) / dLnV_dLnP_T;
     
     % Isentropic Exponent (gamma)
-    GAMMA_EQUILIBRIUM = Cp_EQUILIBRIUM / Cv_EQUILIBRIUM;
+    gammaEquilibrium = cpEquilibrium / cvEquilibrium;
     
     % Analytical Speed of Sound
     % a^2 = - gamma / dlnV_dlnP_T * (P/rho) --> where (P/rho) = N_g * R * T
-    a_SQUARED = -(GAMMA_EQUILIBRIUM / dlnV_dlnP_T) * N_g * R * T;
-    a = sqrt(a_SQUARED);
+    a2 = -(gammaEquilibrium / dLnV_dLnP_T) * nG * R * temp;
+    a = sqrt(a2);
     
-    MACH = V / a;
+    mach = v / a;
 
 end

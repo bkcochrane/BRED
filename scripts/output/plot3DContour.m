@@ -1,18 +1,18 @@
 function plot3DContour(Engine)
 
-    X = Engine.X_COORDINATES(:) * 1e3; % mm
-    R = Engine.R_COORDINATES(:) * 1e3; % mm
+    X = Engine.Geometry.X_COORDINATES(:) * 1e3; % mm
+    R = Engine.Geometry.R_COORDINATES(:) * 1e3; % mm
     [X, iu] = unique(X);
     R = R(iu);
     
     % Thermal + channel geometry mapped onto the contour stations
-    X_S = Engine.STREAM_X * 1e3;
-    T_WG = interp1(X_S, Engine.WALL_TWG, X, 'linear', 'extrap');
-    T_COOL = interp1(X_S, Engine.WALL_TCOOLANT, X, 'linear', 'extrap');
-    WIDTH_STATION  = interp1(X_S, Engine.CHANNEL_WIDTH_STATION  * 1e3, X, 'linear', 'extrap');
-    HEIGHT_STATION = interp1(X_S, Engine.CHANNEL_HEIGHT_STATION * 1e3, X, 'linear', 'extrap');
+    X_S = Engine.Stream.X * 1e3;
+    T_WG = interp1(X_S, Engine.Wall.T_WG, X, 'linear', 'extrap');
+    T_COOL = interp1(X_S, Engine.Wall.T_COOLANT, X, 'linear', 'extrap');
+    WIDTH_STATION  = interp1(X_S, Engine.Cooling.CHANNEL_WIDTH_STATION  * 1e3, X, 'linear', 'extrap');
+    HEIGHT_STATION = interp1(X_S, Engine.Cooling.CHANNEL_HEIGHT_STATION * 1e3, X, 'linear', 'extrap');
     
-    WALL_THICKNESS = Engine.WALL_THICKNESS * 1e3;
+    WALL_THICKNESS = Engine.Wall.THICKNESS * 1e3;
     MAP_GAS  = hot();
     MAP_COOL = nebula();
     
@@ -27,8 +27,12 @@ function plot3DContour(Engine)
     TC_GAS = colormapToTruecolor(MAP_GAS, C_G);
     
     % Spiral cooling channels setup
-    N_STARTS = Engine.NUM_CHANNELS;
-    SPIRAL_RATE = Engine.SPIRAL_RATE / 1e3;
+    N_STARTS = Engine.Cooling.NUM_CHANNELS;
+    if isfield(Engine.Cooling, 'SPRIAL_RATE')
+        SPIRAL_RATE = Engine.Cooling.SPIRAL_RATE / 1e3;
+    else
+        SPIRAL_RATE = 0;
+    end
     R_FLOOR = R + WALL_THICKNESS;
     R_ROOF  = R + WALL_THICKNESS + HEIGHT_STATION;
     THETA_STARTS = linspace(0, 2*pi, N_STARTS + 1);

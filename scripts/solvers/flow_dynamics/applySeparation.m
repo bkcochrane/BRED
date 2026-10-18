@@ -1,52 +1,52 @@
 function Engine = applySeparation(Engine)
 
-    P = Engine.STREAM_P;
-    M = Engine.STREAM_M;
-    X = Engine.STREAM_X;
-    R = Engine.STREAM_R;
-    P_AMBIENT = Engine.P_AMBIENT;
-    P_WALL = P;
-    AREA = pi * R.^2;
+    p = Engine.Stream.p;
+    mach = Engine.Stream.mach;
+    x = Engine.Stream.x;
+    r = Engine.Stream.r;
+    P_AMBIENT = Engine.Specs.P_AMBIENT;
+    pWall = p;
+    area = pi * r.^2;
 
-    P_PRE = P;
-    P_POST = nan(numel(X),1);
-    Engine.SEPARATES = false;
-    Engine.X_SEP = NaN;
+    pAttached = p;
+    pPostSep = nan(numel(x),1);
+    Engine.Stream.separates = false;
+    Engine.Stream.xSep = NaN;
 
     if P_AMBIENT > 0
-        div = find(X > 0);
+        div = find(x > 0);
         for k = 1:numel(div)
             i = div(k);
-            if M(i) <= 1, continue; end
+            if mach(i) <= 1, continue; end
 
             % Schmucker separation criterion
-            P_sep = (1.88*M(i) - 1)^(-0.64) * P_AMBIENT;
+            pSep = (1.88 * mach(i) - 1)^(-0.64) * P_AMBIENT;
 
-            if P(i) <= P_sep
+            if p(i) <= pSep
                 
-                Engine.SEPARATES = true;
-                Engine.X_SEP = X(i);
-                Engine.M_SEP = M(i);
-                Engine.P_SEP = P(i);
+                Engine.Stream.separates = true;
+                Engine.Stream.xSep = x(i);
+                Engine.Stream.machSep = mach(i);
+                Engine.Stream.pSep = p(i);
                 
-                P_PRE(i+1:end) = NaN;
+                pAttached(i+1:end) = NaN;
                 % Initial jump in pressure across shock
-                P_JUMP = 0.9 * P_AMBIENT;
+                pJump = 0.9 * P_AMBIENT;
                 
                 % Subsonic diffusion
-                AREA_sep = AREA(i);
+                areaSep = area(i);
 
-                for j = i:numel(X)
+                for j = i:numel(x)
 
-                    frac = (AREA(j) - AREA_sep) / (AREA(end) - AREA_sep);
+                    frac = (area(j) - areaSep) / (area(end) - areaSep);
 
-                    P_POST(j) = P_JUMP + (P_AMBIENT - P_JUMP) * frac;
+                    pPostSep(j) = pJump + (P_AMBIENT - pJump) * frac;
 
                 end
                 
-                P_WALL(i) = NaN;
-                Engine.P_SHOCK_LO = P(i);
-                Engine.P_SHOCK_HI = P_JUMP;
+                pWall(i) = NaN;
+                Engine.Stream.pShockLow = p(i);
+                Engine.Stream.PShockHi = pJump;
 
                 break;
 
@@ -54,7 +54,7 @@ function Engine = applySeparation(Engine)
         end
     end
 
-    Engine.STREAM_P_PRE  = P_PRE;
-    Engine.STREAM_P_POST = P_POST;
+    Engine.Stream.pAttached  = pAttached;
+    Engine.Stream.pPostSep = pPostSep;
     
 end

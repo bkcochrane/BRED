@@ -1,66 +1,33 @@
-function [H_REACTANTS, B_I_CIRC] = chemistrySolve(OF_RATIO, GasData)
+function [hReactants, bCirc] = chemistrySolve(OF_RATIO, PropData)
 
-    MASS_FUEL = 1 / (1 + OF_RATIO);
-    MASS_OX   = OF_RATIO / (1 + OF_RATIO);
+    Fuel = PropData.Fuel;
+    Ox = PropData.Ox;
+
+    massFuel = 1 / (1 + OF_RATIO);
+    massOx   = OF_RATIO / (1 + OF_RATIO);
     
-    Ox = struct('atoms', struct());
-    switch upper(GasData.OXIDIZER)
-        case 'LOX'
-            Ox.M = 31.9988;
-            Ox.Hf = -12979.0e3;  % Liquid at 90 K
-            Ox.atoms.O = 2;
-        case 'HTP' 
-            % 90% H2O2 / 10% H2O by mass approximation
-            Ox.M = 32.65; 
-            Ox.Hf = -197300e3;   % Liquid at 298.15 K
-            Ox.atoms.H = 2.12; 
-            Ox.atoms.O = 1.94;
-        otherwise
-            error('Unknown oxidizer: %s', GasData.OXIDIZER);
-    end
+    molesFuel = massFuel / Fuel.MOLECULAR_MASS;
+    molesOx   = massOx / Ox.MOLECULAR_MASS;
     
-    Fuel = struct('atoms', struct());
-    switch upper(GasData.FUEL)
-        case 'RP-1'
-            Fuel.M = 13.976; % Empirical CH_1.95
-            Fuel.Hf = -24717.7e3; % Liquid at 298.15 K
-            Fuel.atoms.C = 1;
-            Fuel.atoms.H = 1.95;
-        case {'METHANE', 'CH4'}
-            Fuel.M = 16.043;
-            Fuel.Hf = -89360e3;  % Liquid at 111 K
-            Fuel.atoms.C = 1;
-            Fuel.atoms.H = 4;
-        case 'LH2'
-            Fuel.M = 2.016;
-            Fuel.Hf = -9012e3;   % Liquid at 20 K
-            Fuel.atoms.H = 2;
-        otherwise
-            error('Unknown fuel: %s', GasData.FUEL);
-    end
+    hReactants = (molesFuel * Fuel.HEAT_OF_FORMATION) + (molesOx * Ox.HEAT_OF_FORMATION);
     
-    MOLES_FUEL = MASS_FUEL / Fuel.M;
-    MOLES_OX   = MASS_OX / Ox.M;
-    
-    H_REACTANTS = (MOLES_FUEL * Fuel.Hf) + (MOLES_OX * Ox.Hf);
-    
-    NUM_ELEM = numel(GasData.ELEMENTS);
-    B_I_CIRC = zeros(NUM_ELEM, 1);
+    NUM_ELEM = numel(PropData.ELEMENTS);
+    bCirc = zeros(NUM_ELEM, 1);
     
     for e = 1:NUM_ELEM
-        sym = GasData.ELEMENTS{e};
+        sym = PropData.ELEMENTS{e};
         
         f_atoms = 0;
-        if isfield(Fuel.atoms, sym)
-            f_atoms = Fuel.atoms.(sym);
+        if isfield(Fuel.Atoms, sym)
+            f_atoms = Fuel.Atoms.(sym);
         end
         
         o_atoms = 0;
-        if isfield(Ox.atoms, sym)
-            o_atoms = Ox.atoms.(sym);
+        if isfield(Ox.Atoms, sym)
+            o_atoms = Ox.Atoms.(sym);
         end
         
-        B_I_CIRC(e) = (f_atoms * MOLES_FUEL) + (o_atoms * MOLES_OX);
+        bCirc(e) = (f_atoms * molesFuel) + (o_atoms * molesOx);
     end
     
 end

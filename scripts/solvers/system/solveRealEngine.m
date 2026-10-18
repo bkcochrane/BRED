@@ -1,38 +1,64 @@
-function Engine = solveRealEngine(Ideal, GasData)
+function Engine = solveRealEngine(Ideal, PropData)
 
     % ------------------------------------------------------------------------
     % Combustion efficiency
     % ------------------------------------------------------------------------
+
+    % Estimate time to vapourise the propellant - Spalding Ranz-Marshall
     
-    % Calculate how long the propellant remains in the chamber 
-    t_RES = Ideal.RHO_CHAMBER * Ideal.VOLUME_CHAMBER / Ideal.MDOT; % s
+    vGas = Ideal.Specs.mdot / (Ideal.Chamber.rho * Ideal.Chamber.area);
+    vJet = Ideal.Fuel.v;
+    vDroplet = 0.5 * (vGas + vJet);
+    vRel = abs(vGas - vDroplet);
     
-    % ------------------------------------------------------------------------
-    % Estimate time to vapourise the propellant
-    % From: https://www.researchgate.net/publication/336456135_Vaporization-controlled_simplified_model_for_liquid_propellant_rocket_engine_combustion_chamber_design
-    
-    CP_FILM = Ideal.CP_CHAMBER;
-    RHO_RP1 = 807; % kg/m3
-    QS = 246e3; % J/kg Heat of vapourisation
-    T_BOIL_RP1 = 490; % K - RP-1 value >> LOX of 153K
-    T_FILM = 0.5 * (Ideal.T_CHAMBER + T_BOIL_RP1); % K
-    k_FILM = 0.002 + 0.0001 * T_FILM; % W/(m K)
-    
-    B = CP_FILM * (T_FILM - T_BOIL_RP1) / QS; % Spalding number
-    K = 8 * k_FILM / (RHO_RP1 * CP_FILM) * log(1 + B);
-    t_VAP = Ideal.D0^2 / K; % s 
-    % ------------------------------------------------------------------------
-    
-    if t_RES >= t_VAP
-        FRAC_VAPOUR = 1.0;
-    else
-        FRAC_VAPOUR = 1 - (1 - t_RES / t_VAP)^1.5;
+    Droplets = {PropData.Fuel, PropData.Ox};
+    d0s = [Ideal.Fuel.d0, Ideal.Ox.d0];
+    timesVapourise = [0, 0];
+
+    prandtlNumber = (Ideal.Chamber.cp * Ideal.Chamber.mu) / Ideal.Chamber.k; % Prandtl number
+
+    for i = 1:2
+        Prop = Droplets{i}; 
+        d0 = d0s(i);
+        
+        cpFilm = Ideal.Chamber.cp;
+        tempFilm = 0.5 * (Ideal.Chamber.temp + Prop.TEMP_BOIL); % K
+        kFilm = Prop.calcK(tempFilm);
+        
+        reynoldsDroplet = (Ideal.Chamber.rho * vRel * d0) / Ideal.Chamber.mu;
+        
+        % Ranz-Marshall Nusselt Number
+        nuStar = 2 + 0.552 * sqrt(reynoldsDroplet) * prandtlNumber^(1/3);
+        
+        B = cpFilm * (tempFilm - Prop.TEMP_BOIL) / Prop.QS; % Spalding transfer number
+        
+        K = (4 * nuStar) * kFilm / (Prop.RHO * cpFilm) * log(1 + B);
+        
+        timesVapourise(i) = d0^2 / K; % s
+
     end
+    
+    timeVapourise = max(timesVapourise);
+
+    areaThroat = Ideal.Throat.area;
+    volumeConverging = Ideal.Geometry.volumeConverging;
+    areaChamber = Ideal.Chamber.area;
+    
+    LStarRequired = (timeVapourise * vDroplet * areaChamber + volumeConverging) / areaThroat;
+    maxLStar = 1.35 * Ideal.Geometry.LSTAR_TARGET;
+    
+    LStar = min(LStarRequired, maxLStar);
+    
+    volumeCylinder = LStar * areaThroat - volumeConverging;
+    timeResidence = max(volumeCylinder, 0) / areaChamber / vDroplet; % converging section ignored, conservative
+    fracVapour = 1 - (1 - min(timeResidence / timeVapourise, 1))^1.5;
+
+    Ideal.Geometry.LStar = LStar;
     
     Engine = Ideal;
 
-    RADIUS_THROAT = Engine.DIAMETER_THROAT / 2;
-    RADIUS_EXIT = Engine.DIAMETER_EXIT / 2;
+    radiusThroat = Engine.Throat.diameter / 2;
+    radiusExit = Engine.Exit.diameter / 2;
     
     % ------------------------------------------------------------------------
     
@@ -42,86 +68,98 @@ function Engine = solveRealEngine(Ideal, GasData)
         % Nozzle efficiency
         % ------------------------------------------------------------------------
         
-        Engine = calculateProfile(Engine);
+        if ~isfield(Engine.Geometry, 'lock') || Engine.Geometry.lock == false
+            Engine = calculateProfile(Engine);
+        end
         
         % ------------------------------------------------------------------------
         % Divergence losses
         
-        RADIUS_BAR_EXIT = RADIUS_EXIT / RADIUS_THROAT;
-        L_BAR = Engine.NOZZLE_LENGTH / RADIUS_THROAT;
-        RADIUS_BAR_CHAMBER = 1 + (RADIUS_BAR_EXIT - 1) / L_BAR;
-        n_div = 1.45 * (RADIUS_BAR_CHAMBER^0.25) - 0.005 * RADIUS_BAR_CHAMBER;
-
-        [~, ~, propellant] = equilibriumSolve('SP', Engine.S0_R, Engine.P_EXIT, GasData, Engine.T_THROAT, Engine.N_J_THROAT, 0);
-        R_SPECIFIC_EXIT = GasData.R / propellant.MBAR;
-        R_SPECIFIC_CHAMBER = GasData.R / Engine.MBAR;
-        k_AVE = log(Engine.P_CHAMBER / Engine.P_EXIT) / log((Engine.P_CHAMBER / Engine.P_EXIT) * (R_SPECIFIC_EXIT * propellant.T) / (R_SPECIFIC_CHAMBER * Engine.T_CHAMBER));
+        radiusBarExit = radiusExit / radiusThroat;
+        LBar = Engine.Geometry.lengthNozzle / radiusThroat;
+        radiusBarChamber = 1 + (radiusBarExit - 1) / LBar;
+        nDiv = 1.45 * (radiusBarChamber^0.25) - 0.005 * radiusBarChamber;
         
-        B = 1.52 * (exp(-30 * (k_AVE - 1)) + 0.1);
-        ZETA_D = 1 - B * (exp(n_div * (1 - RADIUS_BAR_EXIT / RADIUS_BAR_CHAMBER)) - 1) / (exp(n_div) - 1);
-    
+        [~, ~, Propellant] = equilibriumSolve('SP', Engine.Chamber.s0R, Engine.Exit.p, PropData, Engine.Throat.temp, Engine.Throat.nj, 0);
+        rSpecificExit = PropData.R / Propellant.mbar;
+        rSpecificChamber = PropData.R / Engine.Chamber.mbar;
+        kAverage = log(Engine.Chamber.P / Engine.Exit.p) / log((Engine.Chamber.P / Engine.Exit.p) * (rSpecificExit * Propellant.temp) / (rSpecificChamber * Engine.Chamber.temp));
+        
+        B = 1.52 * (exp(-30 * (kAverage - 1)) + 0.1);
+        radiusRatio = max(radiusBarChamber, radiusBarExit) / min(radiusBarExit, radiusBarChamber);
+        zetaD = 1 - B * (exp(nDiv * (1 - radiusRatio)) - 1) / (exp(nDiv) - 1);
+        if zetaD <= 0 || zetaD > 1.0
+            zetaD = 0.985;
+        end
+        
         % ------------------------------------------------------------------------
         % Frictional losses
-        [~, GasData.B_I_CIRC] = chemistrySolve(Engine.OF_RATIO, GasData);
+        [~, PropData.bCirc] = chemistrySolve(Engine.Specs.ofRatio, PropData);
         
-        Engine = calculateStreamwise(Engine, GasData, 'diverging');
+        Engine = calculateStreamwise(Engine, PropData, 'diverging');
         
-        Re = Engine.STREAM_RHO .* Engine.STREAM_V .* max(Engine.STREAM_X,1e-6) ./ Engine.STREAM_MU; % Reynolds number
-        Cf_SKIN = 0.026 ./ Re.^(1/7); % Turbulent skin friction (1/7th Power Law)
-        TAU_W  = 0.5 * Cf_SKIN .* Engine.STREAM_RHO .* Engine.STREAM_V.^2; % Pa - Wall shear stress
+        reynolds = Engine.Stream.rho .* Engine.Stream.v .* max(Engine.Stream.x,1e-6) ./ Engine.Stream.mu; % Reynolds number
+        cfSkin = 0.026 ./ reynolds.^(1/7); % Turbulent skin friction (1/7th Power Law)
+        tauW  = 0.5 * cfSkin .* Engine.Stream.rho .* Engine.Stream.v.^2; % Pa - Wall shear stress
         
-        dX_AXIAL = diff(Engine.STREAM_X);
-        dR = diff(Engine.STREAM_R);
-        ds_surf = hypot(dX_AXIAL, dR);
-        cos_THETA = dX_AXIAL ./ ds_surf;
+        dXAxial = diff(Engine.Stream.x);
+        dR = diff(Engine.Stream.r);
+        dsSurf = hypot(dXAxial, dR);
+        cosTheta = dXAxial ./ dsSurf;
         
-        R_AVE   = 0.5 * (Engine.STREAM_R(1:end-1) + Engine.STREAM_R(2:end));
-        TAU_AVE = 0.5 * (TAU_W(1:end-1) + TAU_W(2:end));
+        rAverage = 0.5 * (Engine.Stream.r(1:end-1) + Engine.Stream.r(2:end));
+        tauAverage = 0.5 * (tauW(1:end-1) + tauW(2:end));
         
-        integral_val = sum(TAU_AVE .* R_AVE .* cos_THETA .* dX_AXIAL);
-        Cf_IDEAL = Engine.THRUST / (Engine.P_CHAMBER * Engine.AREA_THROAT); 
+        integralVal = sum(tauAverage .* rAverage .* cosTheta .* dXAxial);
+        cfIdeal = Engine.Specs.thrust / (Engine.Chamber.P * Engine.Throat.area); 
         
-        ZETA_F = 1 - (2 * pi * integral_val) / (Cf_IDEAL * Engine.AREA_THROAT * Engine.P_CHAMBER);
+        zetaF = 1 - (2 * pi * integralVal) / (cfIdeal * Engine.Throat.area * Engine.Chamber.P);
         
         % ------------------------------------------------------------------------
         % Multi-phase flow
 
-        Z_CONDENSED = propellant.N_CONDENSED * 12.011;
+        zCondensed = Propellant.numCondensed * 12.011;
         
-        if Z_CONDENSED > 1e-5
-            C_s = 2000; % Approx specific heat of solid soot J/(kg K)
-            w_e = Engine.STREAM_V(end);
+        if zCondensed > 1e-5
+            cS = 2000; % Approx specific heat of solid soot J/(kg K)
+            wE = Engine.Stream.v(end);
             
-            ZETA_ZW = 1 - (Z_CONDENSED * C_s / w_e^2) * (Engine.T_CHAMBER - propellant.T * (1 + log(Engine.T_CHAMBER / prop_e.T)));
-            ZETA_zT = 1 - (Z_CONDENSED / 2);
-            ZETA_Z = 0.2 * ZETA_ZW + 0.8 * ZETA_zT;
+            zetaZW = 1 - (zCondensed * cS / wE^2) * (Engine.Chamber.temp - Propellant.temp * (1 + log(Engine.Chamber.temp / Propellant.temp)));
+            zetaZT = 1 - (zCondensed / 2);
+            zetaZ = 0.2 * zetaZW + 0.8 * zetaZT;
         else
-            ZETA_Z = 1.0;
+            zetaZ = 1.0;
         end
         
-        Engine.ETA_NOZZLE = ZETA_D * ZETA_F * ZETA_Z;
+        Engine.Efficiency.nozzle = zetaD * zetaF * zetaZ;
 
         % ------------------------------------------------------------------------
         % Discharge coefficient
-        Engine.DISCHARGE_COEFF = 0.97;
+        Engine.Efficiency.cdThroat = 0.97;
         
         % ------------------------------------------------------------------------
         % Combustion efficiency
         % ------------------------------------------------------------------------
         % Finite rate kinematics loss
-        h0_kin = 6.7e-4; 
-        a_kin = 0.35; 
-        b_kin = 0.8;
+        h0Kin = 6.7e-4; 
+        aKin = 0.35; 
+        bKin = 0.8;
         
-        XI_r_prime = (h0_kin / RADIUS_THROAT)^a_kin * (Engine.P_AMBIENT / Engine.P_CHAMBER)^b_kin * log10(RADIUS_EXIT / RADIUS_THROAT);
-        XI_r_double_prime = max(0, (2.1 - log(Engine.P_CHAMBER / 2e6)) / 100);
+        xiRPrime = (h0Kin / radiusThroat)^aKin * (Engine.Specs.P_AMBIENT / Engine.Chamber.P)^bKin * log10(radiusExit / radiusThroat);
+        xiRPrimePrime = max(0, (2.1 - log(Engine.Chamber.P / 2e6)) / 100);
         
-        ZETA_R = (1 - XI_r_prime) * (1 - XI_r_double_prime);
+        zetaR = (1 - xiRPrime) * (1 - xiRPrimePrime);
 
-        Engine.ETA_COMBUSTION = FRAC_VAPOUR * Engine.ETA_MIXING * ZETA_R;
+        Engine.Efficiency.combustion = fracVapour * Engine.Efficiency.MIXING * zetaR;
+      
         % ------------------------------------------------------------------------
         
-        Engine = solveEngine(Engine, GasData);
+        Engine = solveEngine(Engine, PropData);
     end
+
+    if LStarRequired > maxLStar
+        fprintf('[Warning] Required L* = %.2f m is greater than the maximum L* %.1f m. Only %.1f%% of propellant is vapourised: combustion efficiency has dropped to %.3f.\n', ...
+            LStarRequired, maxLStar, fracVapour * 100, Engine.Efficiency.combustion);
+    end  
 
 end
