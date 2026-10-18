@@ -33,7 +33,7 @@ function Engine = sizeCoolingFlow(Engine, PropData)
 
         mdot = mdotNew;
         Engine.Cooling.Coolant.mdot = mdot;
-        Engine = calculateHeatFlux(Engine, PropData);
+        Engine = calculateHeatFlux(Engine, PropData, 'Bartz');
         tempOut = max(Engine.Wall.tempCoolant);
 
         tempError = tempOut - tempLimit;

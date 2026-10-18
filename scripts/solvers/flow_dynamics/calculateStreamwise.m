@@ -27,6 +27,8 @@ function Engine = calculateStreamwise(Engine, PropData, region)
     gammas = rhos;
     massFractions = zeros(numX, PropData.NUM_SPECIES);
     massPercentages = massFractions;
+    prandtls = rhos;
+    hs = rhos;
 
     areaScale = Engine.Efficiency.combustion * Engine.Efficiency.cdThroat;
     
@@ -53,6 +55,8 @@ function Engine = calculateStreamwise(Engine, PropData, region)
     Engine.Stream.gamma = gammas;
     Engine.Stream.massFraction = massFractions;
     Engine.Stream.massPercentage = massPercentages;
+    Engine.Stream.prandtl = prandtls;
+    Engine.Stream.h = hs;
     
     Engine = applySeparation(Engine);
     
@@ -113,6 +117,8 @@ function Engine = calculateStreamwise(Engine, PropData, region)
         machs(i) = vs(i) / sqrt(Propellant.gamma * Propellant.rSpecific * Propellant.temp);
         massFractions(i, :) = Propellant.massFraction(:)';
         massPercentages(i, :) = Propellant.massPercentage(:)';
+        prandtls(i) = Propellant.cp * Propellant.mu / Propellant.k;
+        hs(i) = Propellant.h;
 
     end
 

@@ -1,4 +1,4 @@
-function Engine = calculateHeatFlux(Engine, PropData)
+function Engine = calculateHeatFlux(Engine, PropData, method)
 
     % --------------------------------------------------------------------
 
@@ -24,6 +24,12 @@ function Engine = calculateHeatFlux(Engine, PropData)
     r = Engine.Stream.r;
     mach = Engine.Stream.mach;
     numX = numel(x);
+
+    prandtlGas = Engine.Stream.prandtl;
+    rhoGas = Engine.Stream.rho;
+    h = Engine.Stream.h;
+    h0 = h(1);
+    v = Engine.Stream.v;
 
     ds = hypot(diff(x), diff(r));
     rMean = 0.5 * (r(1:end-1) + r(2:end));
@@ -68,7 +74,11 @@ function Engine = calculateHeatFlux(Engine, PropData)
     heightStation = Engine.Cooling.heightChannelStation;
 
     hG = zeros(numX,1);
-    tempAW = zeros(numX,1);
+    mach = Engine.Stream.mach;
+    gamma = Engine.Stream.gamma;
+    mach2_vec = (gammaChamber - 1) / 2 .* mach.^2;
+    tempAW = tempChamber .* (1 + prandtlChamber^0.33 .* mach2_vec) ./ (1 + mach2_vec);
+    Engine.Wall.tempAW = tempAW;
     q = zeros(numX,1);
     tempWG = 800 * ones(numX,1);
     tempWI = 800 * ones(numX,1);
@@ -76,6 +86,15 @@ function Engine = calculateHeatFlux(Engine, PropData)
     for k = 1:20
 
         tempCoolantOld = tempCoolant;
+        
+        if strcmp(method, 'Ievlev')
+            Engine.Wall.tempWG = tempWG; % Pass current wall temp to struct
+            Ievlev = calculateIevlev(Engine, PropData);
+            zT = Ievlev.zT;
+            beta2 = Ievlev.beta2;
+            rSpecific = Ievlev.rSpecific;
+            rSpecific1500K = Ievlev.rSpecific1500K;
+        end
     
         for i = 1:numX
     
@@ -89,13 +108,39 @@ function Engine = calculateHeatFlux(Engine, PropData)
             RELAX = 0.5;
     
             for iter = 1:50
-    
-                sigma = 1 / ( (0.5 * (max(tempWG(i), 1) / tempChamber) * (1 + mach2) + 0.5)^0.68 * (1 + mach2)^0.12);
-                
-                hG(i) = sigma * (0.026 / diameterThroat^0.2) * (muChamber^0.2 * cpChamber / prandtlChamber^0.6) ...
-                             * (P_CHAMBER / cStar)^0.8 * (diameterThroat / radiusCurvature)^0.1 * areaRatioLocal^0.9;
-                
-                q(i) = hG(i) * (tempAW(i) - tempWG(i));
+
+                if strcmp(method, 'Bartz')
+            
+                    sigma = 1 / ( (0.5 * (max(tempWG(i), 1) / tempChamber) * (1 + mach2) + 0.5)^0.68 * (1 + mach2)^0.12);
+                    hG(i) = sigma * (0.026 / diameterThroat^0.2) * (muChamber^0.2 * cpChamber / prandtlChamber^0.6) ...
+                            * (P_CHAMBER / cStar)^0.8 * (diameterThroat / radiusCurvature)^0.1 * areaRatioLocal^0.9;
+                    q(i) = hG(i) * (tempAW(i) - tempWG(i));
+                    
+                elseif strcmp(method, 'Ievlev')
+                    
+                    tempE = rSpecific(i) * tempChamber / rSpecific1500K;
+                    tempWGBar = min(max(tempWG(i) / tempE, 0.01), 0.95); 
+                    
+                    denomzTz = max(1 - tempWGBar + 0.1 * beta2(i), 1e-3);
+                    numerzTz = 1 - beta2(i) + beta2(i) * (1 - 0.08696 * (1 - beta2(i)) / denomzTz);
+                    zTz = (1.769 * max(numerzTz / denomzTz, 1e-3))^0.54;
+                    
+                    z = max(abs(zT(i) / zTz), 10);
+                    
+                    baseNum = max(1 - 0.21 * ((1 - prandtlGas(i)) / prandtlGas(i)^(4/3)) * beta2(i) / max(1 - tempWGBar, 1e-3), 1e-3);
+                    numerHG = (1 / zTz)^(0.089 * prandtlGas(i)^-0.56) * baseNum^0.9225;
+                    
+                    denomHG = (307.8 + 54.8 * log10(prandtlGas(i) / 19.5)^2) * prandtlGas(i)^0.45 * z^0.08 - 650;
+                    denomHGclamped = max(abs(denomHG), 25); 
+                    
+                    alphaT = numerHG / denomHGclamped;
+                    
+                    cpLocal = (gamma(i) / (gamma(i) - 1)) * rSpecific(i);
+                    hG(i) = alphaT * rhoGas(i) * v(i) * cpLocal;
+                    
+                    q(i) = hG(i) * (tempAW(i) - tempWG(i));
+                    
+                end
                 
                 tempWGNew = tempCoolant(i) + q(i) * (1 / hCoolant + Engine.Wall.THICKNESS / Engine.Wall.K);
                 

@@ -1,9 +1,16 @@
 function plotResults(Engine)
 
     [xRaw, iu] = unique(Engine.Stream.x);
-    rRaw=Engine.Stream.r(iu); machRaw=Engine.Stream.mach(iu);
-    pRaw=Engine.Stream.p(iu); tempRaw=Engine.Stream.temp(iu);
-    tempWG=Engine.Wall.tempWG(iu); tempWI=Engine.Wall.tempWI(iu); tempCoolant=Engine.Wall.tempCoolant(iu);
+    rRaw = Engine.Stream.r(iu);
+    machRaw = Engine.Stream.mach(iu);
+    pRaw = Engine.Stream.p(iu);
+    tempRaw = Engine.Stream.temp(iu);
+    tempWGBartz = Engine.Wall.Bartz.tempWG(iu);
+    tempWIBartz = Engine.Wall.Bartz.tempWI(iu);
+    tempCoolantBartz = Engine.Wall.Bartz.tempCoolant(iu);
+    tempWGIevlev = Engine.Wall.Ievlev.tempWG(iu);
+    tempWIIevlev = Engine.Wall.Ievlev.tempWI(iu);
+    tempCoolantIevlev = Engine.Wall.Ievlev.tempCoolant(iu);
 
     xFine = linspace(min(xRaw), max(xRaw), 100).';
     mach = interp1(xRaw,machRaw,xFine,'pchip');
@@ -108,15 +115,49 @@ function plotResults(Engine)
 
     % ax4: Wall temps ---
     ax4 = axes('Position',[panelLeft, yWall, panelWidth, hPanel]);
-    hold(ax4,'on');
-    plot(ax4,XR,tempWG,'LineWidth',1.5,'Color',colors(1,:));
-    plot(ax4,XR,tempWI,'LineWidth',1.5,'Color',colors(2,:));
-    plot(ax4,XR,tempCoolant,'LineWidth',1.5,'Color',colors(3,:));
+    p1 = plot(ax4, XR, tempWGBartz, 'LineWidth', 1.5, 'Color', colors(1,:));
+    hold(ax4, 'on');
+    p2 = plot(ax4, XR, tempWIBartz, 'LineWidth', 1.5, 'Color', colors(2,:));
+    p3 = plot(ax4, XR, tempCoolantBartz, 'LineWidth', 1.5, 'Color', colors(3,:));
+    
+    plot(ax4, XR, tempWGIevlev, '--', 'LineWidth', 1.5, 'Color', colors(1,:));
+    plot(ax4, XR, tempWIIevlev, '--', 'LineWidth', 1.5, 'Color', colors(2,:));
+    plot(ax4, XR, tempCoolantIevlev, '--', 'LineWidth', 1.5, 'Color', colors(3,:));
+    
     ylabel(ax4,'T (K)'); xlabel(ax4,'x (mm)');
     grid(ax4,'on'); box(ax4,'on');
-    ylim(ax4,[0 max(tempWG)*1.1]); xlim(ax4,XLIMS);
-    legend(ax4,{'Gas-side wall','Coolant-side wall','Coolant'},'Location','southwest');
+    ylim(ax4,[0 max(max(tempWGBartz), max(tempWGIevlev))*1.1]); 
+    xlim(ax4,XLIMS);
     title(ax4,'Wall temperatures');
+
+    legend(ax4, [p1, p2, p3], { ...
+        'Gas-side wall', ...
+        'Coolant-side wall', ...
+        'Coolant' }, ...
+        'Location', 'southwest');
+
+    axOverlay = axes('Position', get(ax4, 'Position'), ...
+               'Color', 'none', ...
+               'XAxisLocation', 'top', ...
+               'YAxisLocation', 'right', ...
+               'XColor', 'none', ...
+               'YColor', 'none');
+             
+    hold(axOverlay, 'on');
+    xlim(axOverlay, xlim(ax4)); 
+    ylim(axOverlay, ylim(ax4));
+
+    d1 = plot(axOverlay, NaN, NaN, '-k', 'LineWidth', 1.5);
+    d2 = plot(axOverlay, NaN, NaN, '--k', 'LineWidth', 1.5);
+
+    legend(axOverlay, [d1, d2], { ...
+        'Bartz', ...
+        'Ievlev' }, ...
+        'Location', 'northwest');
+        
+    set(axOverlay, 'HitTest', 'off', 'PickableParts', 'none');
+
+    % ---
 
     axs = findall(gcf, 'Type', 'axes');
     set(axs, 'FontSize', 10);

@@ -45,9 +45,10 @@ function Engine = solveRealEngine(Ideal, PropData)
     areaChamber = Ideal.Chamber.area;
     
     LStarRequired = (timeVapourise * vDroplet * areaChamber + volumeConverging) / areaThroat;
-    maxLStar = 1.35 * Ideal.Geometry.LSTAR_TARGET;
+    LSTAR_TARGET = Ideal.Geometry.LSTAR_TARGET;
+    maxLStar = 1.35 * LSTAR_TARGET;
     
-    LStar = min(LStarRequired, maxLStar);
+    LStar = max(LSTAR_TARGET, min(LStarRequired, maxLStar));
     
     volumeCylinder = LStar * areaThroat - volumeConverging;
     timeResidence = max(volumeCylinder, 0) / areaChamber / vDroplet; % converging section ignored, conservative

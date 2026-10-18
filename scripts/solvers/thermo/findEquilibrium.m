@@ -6,7 +6,7 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
     % HP targets H_REACTANTS
     %
     % SP mode solves for insentropic expansion
-    % SP targets S0_R
+    % SP targets s0R
 
     A_IJ = PropData.A_IJ;
     bCirc = PropData.bCirc;
