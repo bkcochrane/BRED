@@ -23,7 +23,10 @@ function plotResults(Engine)
 
     figW=18; figH=24;
     figEngineResults = figure('Units','centimeters','Position',[2 2 figW figH],'Color','w'); clf;
-    colors = nebula(3);
+
+    colors = [0, 0.5434, 0.9833;
+              0.6068, 0.1418, 0.6805;
+              1.0, 0, 0.3180];
 
     subText = sprintf(['Thrust = %.1f kN, O/F = %.1f, P_c = %.0f bar\n', ...
         'Area Ratio = %.1f, ISP = %.0f s, C* = %.0f m/s'], ...

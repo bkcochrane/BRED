@@ -104,14 +104,12 @@ function findOptimalRatio(Engine, PropData)
     % Plotting
     % ------------------------------------------------------------------------
     figure('Units','centimeters','Position',[5 5 16 10]);
-    if exist('nebula', 'file')
-        COLOR_THEME = nebula(2);
-    else
-        COLOR_THEME = parula(2);
-    end
     
-    cmIsp = COLOR_THEME(1,:);
-    cmCStar = COLOR_THEME(2,:);
+    colormap = [0, 0.5434, 0.9833;
+                1.0, 0, 0.3180];
+    
+    cmIsp = colormap(1,:);
+    cmCStar = colormap(2,:);
 
     lineStyles = {'--', '-', ':'};
     

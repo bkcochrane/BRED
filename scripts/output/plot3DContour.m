@@ -1,7 +1,7 @@
 function plot3DContour(Engine)
 
-    X = Engine.Geometry.X_COORDINATES(:) * 1e3; % mm
-    R = Engine.Geometry.R_COORDINATES(:) * 1e3; % mm
+    X = Engine.Geometry.xCoordinates(:) * 1e3; % mm
+    R = Engine.Geometry.rCoordinates(:) * 1e3; % mm
     [X, iu] = unique(X);
     R = R(iu);
     

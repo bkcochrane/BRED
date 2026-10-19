@@ -1,123 +1,93 @@
 function Engine = calculateHeatFlux(Engine, PropData, method)
 
-    % --------------------------------------------------------------------
-
-    % Using the Bartz model at chamber conditions
-
-    % --------------------------------------------------------------------
-
     muChamber = Engine.Stream.mu(1);
     cpChamber = Engine.Chamber.cp;
     kChamber = Engine.Stream.k(1);
     prandtlChamber = muChamber * cpChamber / kChamber;
-    r = PropData.R;
-    gammaChamber = cpChamber / (cpChamber - r/Engine.Chamber.mbar);
-
+    rGas = PropData.R;
+    gammaChamber = cpChamber / (cpChamber - rGas / Engine.Chamber.mbar);
     cStar = Engine.Specs.cStar;
     P_CHAMBER = Engine.Chamber.P;
     diameterThroat = Engine.Throat.diameter;
-    radiusCurvature = 0.382 * diameterThroat/2;
+    radiusCurvature = 0.382 * diameterThroat / 2;
     areaThroat = Engine.Throat.area;
     tempChamber = Engine.Chamber.temp;
-
+    
     x = Engine.Stream.x;
     r = Engine.Stream.r;
     mach = Engine.Stream.mach;
+    gammaGas = Engine.Stream.gamma;
+    cpGas = Engine.Stream.cp;
     numX = numel(x);
-
+    
+    tempCoolant = Engine.Cooling.Coolant.T_SUPPLY * ones(numX, 1);
     prandtlGas = Engine.Stream.prandtl;
     rhoGas = Engine.Stream.rho;
-    h = Engine.Stream.h;
-    h0 = h(1);
     v = Engine.Stream.v;
-
+    
     ds = hypot(diff(x), diff(r));
     rMean = 0.5 * (r(1:end-1) + r(2:end));
-    areaSegment = 2*pi .* rMean .* ds;
-
-    filmPercent = Engine.Cooling.FILM_COOLING_FRACTION;
-    fuelMdot = Engine.Fuel.mdot;
-
-    if filmPercent > 0
-
-        Engine.Cooling.Film.mdot = fuelMdot * filmPercent;
-
-    end
+    areaSegment = 2 * pi .* rMean .* ds;
     
-    if Engine.Cooling.REGEN_COOLING == true
-
-        Engine.Cooling.Coolant = PropData.Fuel;
-        Engine.Cooling.Coolant.mdot = fuelMdot * (1 - filmPercent);
-        tempCoolant = PropData.Fuel.T_SUPPLY * ones(numX,1);
-
-    else
-
-        Engine.Cooling.Coolant.P_REF = [1, 2, 5, 10, 20, 50, 100, 150, 220.6]; 
-        Engine.Cooling.Coolant.T_REF = [373.1, 393.4, 425.0, 453.2, 485.6, 537.1, 584.3, 615.4, 647.1]; 
-        
-        Engine.Cooling.Coolant.tSat = @(P) interp1(P_REF, T_REF, P/1e5, 'pchip', 'extrap');
-        
-        tempSupply = 298; % K
-        Engine.Cooling.Coolant.T_SUPPLY = tempSupply;
-        tempCoolant = tempSupply * ones(numX,1);
-        
-        Engine.Cooling.Coolant.RHO = 1000.0; % kg/m3
-        Engine.Cooling.Coolant.MU = 8.9e-4; % Pa*s
-        Engine.Cooling.Coolant.CP = 4184.0; % J/(kg*K)
-        Engine.Cooling.Coolant.K = 0.606; % W/(m*K)
-
-    end
-
     % Size cooling channels based on geometry
     Engine = sizeCooling(Engine);
     widthStation = Engine.Cooling.widthChannelStation;
     heightStation = Engine.Cooling.heightChannelStation;
-
-    hG = zeros(numX,1);
-    mach = Engine.Stream.mach;
-    gamma = Engine.Stream.gamma;
+    
+    % Pre-calculate adiabatic wall temperature (tempAW)
     mach2_vec = (gammaChamber - 1) / 2 .* mach.^2;
     tempAW = tempChamber .* (1 + prandtlChamber^0.33 .* mach2_vec) ./ (1 + mach2_vec);
     Engine.Wall.tempAW = tempAW;
-    q = zeros(numX,1);
-    tempWG = 800 * ones(numX,1);
-    tempWI = 800 * ones(numX,1);
-
+    
+    hG = zeros(numX, 1);
+    hL = zeros(numX, 1);
+    hEff = zeros(numX, 1);
+    q = zeros(numX, 1);
+    tempWG = 800 * ones(numX, 1);
+    tempWI = 800 * ones(numX, 1);
+    
     for k = 1:20
-
         tempCoolantOld = tempCoolant;
         
         if strcmp(method, 'Ievlev')
-            Engine.Wall.tempWG = tempWG; % Pass current wall temp to struct
+            Engine.Wall.tempWG = tempWG;
             Ievlev = calculateIevlev(Engine, PropData);
             zT = Ievlev.zT;
             beta2 = Ievlev.beta2;
             rSpecific = Ievlev.rSpecific;
             rSpecific1500K = Ievlev.rSpecific1500K;
         end
+
+        if Engine.Cooling.FILM_COOLING_FRACTION > 0
+
+            filmCoolingFraction = Engine.Cooling.FILM_COOLING_FRACTION;
+            mdotFuel = Engine.Fuel.mdot;
+            mdotFilmCooling = mdotFuel * filmCoolingFraction;
+            cpFilm = PropData.Fuel.CP;
+            muFilm = PropData.Fuel.MU;
+            kFilm = PropData.Fuel.K;
+            prandtlFilm = muFilm * cpFilm / kFilm;
+
+        end
     
         for i = 1:numX
-    
             areaLocal = pi * r(i)^2;
             areaRatioLocal = areaThroat / areaLocal;
-            mach2 = (gammaChamber-1)/2 * mach(i)^2;
-            tempAW(i) = tempChamber * (1 + prandtlChamber^0.33*mach2) / (1 + mach2);
+            mach2 = mach2_vec(i);
             
             hCoolant = coolantH(Engine, widthStation(i), heightStation(i), tempCoolant(i));
-
+            R_wall = Engine.Wall.THICKNESS / Engine.Wall.K;
+            R_total = (1 / hCoolant) + R_wall;
             RELAX = 0.5;
     
             for iter = 1:50
-
                 if strcmp(method, 'Bartz')
-            
-                    sigma = 1 / ( (0.5 * (max(tempWG(i), 1) / tempChamber) * (1 + mach2) + 0.5)^0.68 * (1 + mach2)^0.12);
+                    sigma = 1 / ((0.5 * (max(tempWG(i), 1) / tempChamber) * (1 + mach2) + 0.5)^0.68 * (1 + mach2)^0.12);
+                    
                     hG(i) = sigma * (0.026 / diameterThroat^0.2) * (muChamber^0.2 * cpChamber / prandtlChamber^0.6) ...
-                            * (P_CHAMBER / cStar)^0.8 * (diameterThroat / radiusCurvature)^0.1 * areaRatioLocal^0.9;
-                    q(i) = hG(i) * (tempAW(i) - tempWG(i));
+                          * (P_CHAMBER / cStar)^0.8 * (diameterThroat / radiusCurvature)^0.1 * areaRatioLocal^0.9;
                     
                 elseif strcmp(method, 'Ievlev')
-                    
                     tempE = rSpecific(i) * tempChamber / rSpecific1500K;
                     tempWGBar = min(max(tempWG(i) / tempE, 0.01), 0.95); 
                     
@@ -134,52 +104,80 @@ function Engine = calculateHeatFlux(Engine, PropData, method)
                     denomHGclamped = max(abs(denomHG), 25); 
                     
                     alphaT = numerHG / denomHGclamped;
+                    hG(i) = alphaT * rhoGas(i) * v(i) * cpChamber;
+                end
+
+                if exist('mdotFilmCooling', 'var') && mdotFilmCooling > 0
+
+                    % From Stechman et al. (1969) doi.org/10.2514/3.29545
                     
-                    cpLocal = (gamma(i) / (gamma(i) - 1)) * rSpecific(i);
-                    hG(i) = alphaT * rhoGas(i) * v(i) * cpLocal;
+                    dx = max(x(i) - x(1), 1e-4) + 0.0015;
+
+                    turbulentHeatTransfer = 0.0288 * cpFilm / (prandtlFilm^(1/3) * muFilm^0.2 * dx^0.2);
+
+                    massFluxFilm = mdotFilmCooling / (2 * pi * r(i));
+                    reynoldsFilm = massFluxFilm * dx / muFilm;
+                    eta = 0.5 + 0.5 * exp(- (reynoldsFilm / 1800).^1.3);
                     
-                    q(i) = hG(i) * (tempAW(i) - tempWG(i));
+                    turbulentVelocityNumer = eta * mdotFilmCooling * v(i) * hG(i) * prandtlGas(i)^(2/3) * rhoGas(i);
+                    turbulentVelocityDenom = pi * r(i) * cpGas(i);
                     
+                    turbulentVelocity = (turbulentVelocityNumer / turbulentVelocityDenom)^0.4;
+
+                    hL(i) = turbulentHeatTransfer * turbulentVelocity;
+
+                    transitionMdot = 0.01 * mdotFuel;
+                    alpha = 1 / (1 + exp(-50 * (mdotFilmCooling - transitionMdot)));
+                    
+                    hEff(i) = (1 - alpha) * hG(i) + alpha * hL(i);
+
+                else
+
+                    hL(i) = 0;
+
+                    hEff(i) = hG(i);
+
+                end
+
+                tempWGNew = (tempCoolant(i) + hEff(i) * R_total * tempAW(i)) / (1 + hEff(i) * R_total);
+                
+                if abs(tempWGNew - tempWG(i)) < 1e-3
+                    tempWG(i) = tempWGNew; 
+                    break; 
                 end
                 
-                tempWGNew = tempCoolant(i) + q(i) * (1 / hCoolant + Engine.Wall.THICKNESS / Engine.Wall.K);
-                
-                if abs(tempWGNew - tempWG(i)) < 1e-3, tempWG(i) = tempWGNew; break; end
-                
-                tempWGNew = max(tempWGNew, Engine.Cooling.Coolant.T_SUPPLY);
-    
-                tempWG(i) = (1-RELAX) * tempWG(i) + RELAX * tempWGNew;
-            
+                tempWG(i) = (1 - RELAX) * tempWG(i) + RELAX * tempWGNew;
             end
-
-            tempWI(i) = tempCoolant(i) + q(i) * (1 / hCoolant);
-    
-        end
-    
-        for i = numX-1:-1:1
             
-            qSegment = 0.5*(q(i) + q(i+1)) * areaSegment(i);
-            tempCoolant(i) = tempCoolant(i+1) + qSegment / (Engine.Cooling.Coolant.mdot * Engine.Cooling.Coolant.CP);
-        
+            % Synchronize final station heat flux and coolant-side wall temperature
+            q(i) = hEff(i) * (tempAW(i) - tempWG(i));
+            tempWI(i) = tempCoolant(i) + q(i) * (1 / hCoolant);
         end
-
+    
+        % March coolant temperature from nozzle exit (numX) to injector (1)
+        for i = numX-1:-1:1
+            qSegment = 0.5 * (q(i) + q(i+1)) * areaSegment(i);
+            tempCoolant(i) = tempCoolant(i+1) + qSegment / (Engine.Cooling.Coolant.mdot * Engine.Cooling.Coolant.CP);
+        end
+        
         if max(abs(tempCoolant - tempCoolantOld)) < 0.1
             break;
         end
-
     end
         
+    % Final consistent pass with converged coolant temperatures
     for i = 1:numX
         hIdx = coolantH(Engine, widthStation(i), heightStation(i), tempCoolant(i));
-        tempWG(i) = tempCoolant(i) + q(i)*(1/hIdx + Engine.Wall.THICKNESS/Engine.Wall.K);
-        tempWI(i) = tempCoolant(i) + q(i)*(1/hIdx);
+        R_total = (1 / hIdx) + (Engine.Wall.THICKNESS / Engine.Wall.K);
+        tempWG(i) = (tempCoolant(i) + hEff(i) * R_total * tempAW(i)) / (1 + hEff(i) * R_total);
+        q(i) = hEff(i) * (tempAW(i) - tempWG(i));
+        tempWI(i) = tempCoolant(i) + q(i) * (1 / hIdx);
     end
-
+    
     Engine.Wall.q = q;
-    Engine.Wall.hG = hG;
+    Engine.Wall.hEff = hEff;
     Engine.Wall.tempAW = tempAW;
     Engine.Wall.tempWG = tempWG;
     Engine.Wall.tempWI = tempWI;
     Engine.Wall.tempCoolant = tempCoolant;
-
 end

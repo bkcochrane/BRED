@@ -9,7 +9,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
     switch upper(FUEL_NAME)
         case {'RP-1', 'RP1'}
             Fuel.MOLECULAR_MASS = 13.976; % CH_1.95
-            Fuel.HEAT_OF_FORMATION = -24717.7e3; % Liquid at 298.15 K (J/mol)
+            Fuel.HEAT_OF_FORMATION = -24717.7; % Liquid at 298.15 K (J/mol)
             Fuel.Atoms.C = 1;
             Fuel.Atoms.H = 1.95;
 
@@ -30,7 +30,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
 
         case {'METHANE', 'CH4', 'LCH4'}
             Fuel.MOLECULAR_MASS = 16.043;
-            Fuel.HEAT_OF_FORMATION = -89360; % Liquid at 111 K (J/mol)
+            Fuel.HEAT_OF_FORMATION = -89233; % Liquid at 111 K (J/mol)
             Fuel.Atoms.C = 1;
             Fuel.Atoms.H = 4;
 
@@ -101,7 +101,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
     switch upper(OX_NAME)
         case 'LOX'
             Ox.MOLECULAR_MASS = 31.9988;
-            Ox.HEAT_OF_FORMATION = -12979e3; % Liquid at 95 K (J/mol)
+            Ox.HEAT_OF_FORMATION = -12979; % Liquid at 95 K (J/mol)
             Ox.Atoms.O = 2;
 
             Ox.RHO = 1141.0; % kg/m3
@@ -200,7 +200,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
         if ~isfile(transInpFile)
             error('Missing %s! Cannot compile transport database.', transInpFile);
         end
-        compileTransport(transInpFile, transMatFile);
+        compileTrans(transInpFile, transMatFile);
     end
     
     ThermoData = load(thermoMatFile);

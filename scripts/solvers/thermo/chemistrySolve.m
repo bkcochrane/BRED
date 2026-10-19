@@ -9,7 +9,7 @@ function [hReactants, bCirc] = chemistrySolve(OF_RATIO, PropData)
     molesFuel = massFuel / Fuel.MOLECULAR_MASS;
     molesOx   = massOx / Ox.MOLECULAR_MASS;
     
-    hReactants = (molesFuel * Fuel.HEAT_OF_FORMATION) + (molesOx * Ox.HEAT_OF_FORMATION);
+    hReactants = (molesFuel * Fuel.HEAT_OF_FORMATION * 1e3) + (molesOx * Ox.HEAT_OF_FORMATION * 1e3);
     
     NUM_ELEM = numel(PropData.ELEMENTS);
     bCirc = zeros(NUM_ELEM, 1);

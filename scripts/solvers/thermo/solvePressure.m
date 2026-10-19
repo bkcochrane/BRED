@@ -94,7 +94,6 @@ function p = solvePressure(s0R, h0, Engine, PropData, temp, nj, mdot, area, pRef
     % Fallback if Secant did not converge
     try
         p = fzero(fluxError, [pMin, pMax]);
-        disp('Hello')
     catch
         % Only triggered at stations right next to throat where massFluxTarget >= G_max
         p = Engine.Throat.p;

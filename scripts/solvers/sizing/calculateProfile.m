@@ -2,9 +2,9 @@ function Engine = calculateProfile(Engine)
 
     volumeChamber = Engine.Geometry.LStar * Engine.Throat.area; % m3
     areaChamber = Engine.Throat.area * Engine.Geometry.CONTRACTION_RATIO_TARGET; % m2
-    diameterChamber = 2*sqrt(areaChamber/pi); % m
-    diameterThroat = 2*sqrt(Engine.Throat.area/pi); % m
-    diameterExit = 2*sqrt(Engine.Exit.area/pi); % m
+    diameterChamber = 2 * sqrt(areaChamber/pi); % m
+    diameterThroat = 2 * sqrt(Engine.Throat.area/pi); % m
+    diameterExit = 2 * sqrt(Engine.Exit.area/pi); % m
 
     % ------------------------------------------------------------------------
     % Calculate converging section profile 
