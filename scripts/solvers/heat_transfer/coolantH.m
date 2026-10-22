@@ -9,9 +9,9 @@ function h = coolantH(Engine, widthChannel, heightChannel, tempLocal)
     Coolant = Engine.Cooling.Coolant;
 
     v = Coolant.mdot / (Coolant.RHO * areaChannel * numChannels);
-    mu = Coolant.MU * exp(-0.020*(tempLocal - 300));
+    mu = Coolant.MU * (tempLocal / 300)^-1.5;
     reynolds = Coolant.RHO * v * diameterHydraulic / mu;
-    prandtl = Coolant.MU * Coolant.CP / Coolant.K;
+    prandtl = mu * Coolant.CP / Coolant.K;
     
     % Sieder-Tate
     nu = 0.027 * reynolds^0.8 * prandtl^(1/3);

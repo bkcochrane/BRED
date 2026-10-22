@@ -92,6 +92,7 @@ function Engine = sizeInjector(Engine, PropData)
     end
 
     Engine.Injector.impingementAngle = gammaAngle;
+    Engine.Injector.lengthImpinge = lengthJet;
     Engine.Injector.momentumRatio = ratioMomentum;
     Engine.Injector.numPortSets = numPortsFuel;
     

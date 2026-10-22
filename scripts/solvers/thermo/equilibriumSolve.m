@@ -4,7 +4,7 @@ function [temp, nj, Propellant] = equilibriumSolve(mode, target, p, PropData, te
     
     % If frozen, calculate T and return (skip phase changes)
     if isFrozen
-        [temp, nj, Propellant] = findEquilibrium(mode, target, p, PropData, temp, nj, needMu, true);
+        [temp, nj, Propellant, ~] = findEquilibrium(mode, target, p, PropData, temp, nj, needMu, true);
         return;
     end
 
@@ -20,9 +20,11 @@ function [temp, nj, Propellant] = equilibriumSolve(mode, target, p, PropData, te
 
     % Logical mask over candidates
     isActive = nj(candidates) > 1e-10;
+
+    hasDropped = false(size(candidates));
     
     % Outer iteration loop
-    for pass = 1:12
+    for pass = 1:20
         active = candidates(isActive);
         PropData.ACTIVE_CONDENSED = active;
         [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData, temp, nj, needMu, false);
@@ -33,6 +35,7 @@ function [temp, nj, Propellant] = equilibriumSolve(mode, target, p, PropData, te
             if any(toDrop)
                 nj(candidates(toDrop)) = 0;
                 isActive(toDrop) = false;
+                hasDropped(toDrop) = true;
                 continue; % Re-solve with the reduced set
             end
         end
@@ -49,8 +52,8 @@ function [temp, nj, Propellant] = equilibriumSolve(mode, target, p, PropData, te
         
         % Vectorized Eq 3.7 check across all inactive candidates at once
         drive = (piI.' * PropData.A_IJ(:, inactSpecies)) - gRT(inactSpecies).';
-        toAdd = drive > 1e-8;
-
+        toAdd = drive > 1e-8 & ~hasDropped(inactiveIdx).';
+        
         if any(toAdd)
             addSpecies = inactSpecies(toAdd);
             isActive(inactiveIdx(toAdd)) = true;

@@ -16,10 +16,12 @@ function Engine = solveThermal(Engine, PropData)
         Engine.Cooling.Coolant.T_SUPPLY = PropData.Fuel.T_SUPPLY;
 
     else
-
-        Engine.Cooling.Coolant.P_REF = [1, 2, 5, 10, 20, 50, 100, 150, 220.6]; 
-        Engine.Cooling.Coolant.T_REF = [373.1, 393.4, 425.0, 453.2, 485.6, 537.1, 584.3, 615.4, 647.1]; 
         
+        % Water
+        P_REF = [1, 2, 5, 10, 20, 50, 100, 150, 220.6]; 
+        T_REF = [373.1, 393.4, 425.0, 453.2, 485.6, 537.1, 584.3, 615.4, 647.1]; 
+        Engine.Cooling.Coolant.P_REF = P_REF;
+        Engine.Cooling.Coolant.T_REF = T_REF;
         Engine.Cooling.Coolant.tSat = @(P) interp1(P_REF, T_REF, P/1e5, 'pchip', 'extrap');
         
         tempSupply = 298; % K
@@ -34,11 +36,13 @@ function Engine = solveThermal(Engine, PropData)
     
     Engine = sizeCoolingFlow(Engine, PropData, 'Bartz');
 
-    EngingBartz  = calculateHeatFlux(Engine, PropData, 'Bartz');
+    
+
+    EngineBartz  = calculateHeatFlux(Engine, PropData, 'Bartz');
     EngineIevlev = calculateHeatFlux(Engine, PropData, 'Ievlev');
 
     Engine.Wall = EngineIevlev.Wall;
-    Engine.Wall.Bartz = EngingBartz.Wall;
+    Engine.Wall.Bartz = EngineBartz.Wall;
     Engine.Wall.Ievlev = EngineIevlev.Wall;
 
     Engine = coolantPressureDrop(Engine);

@@ -15,7 +15,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
 
             Fuel.P_REF = [1 2 5 10 15 20 22.6]; 
             Fuel.T_REF = [450 480 525 565 595 620 645]; 
-            Fuel.tSat = @(p) interp1(P, T, p/1e5, 'pchip', 'extrap');
+            Fuel.tSat = @(p) interp1(Fuel.P_REF, Fuel.T_REF, p/1e5, 'pchip', 'extrap');
             Fuel.T_SUPPLY = 298; % K
 
             Fuel.RHO = 820.0; % kg/m3
@@ -26,6 +26,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
 
             Fuel.QS = 246e3; % J/kg
             Fuel.TEMP_BOIL = 490; % K
+            Fuel.TEMP_DEGRADE = 560;
             Fuel.calcK = @(t) 0.002 + 0.0001 * t; % Vapor thermal conductivity
 
         case {'METHANE', 'CH4', 'LCH4'}
@@ -36,7 +37,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
 
             Fuel.P_REF = [1 5 10 15 20 25 30 35 40 45.99];
             Fuel.T_REF = [111.6 131.3 143.4 152.6 160.4 167.3 173.6 179.4 184.9 190.56];
-            Fuel.tSat = @(p) interp1(P, T, p/1e5, 'pchip', 'extrap');
+            Fuel.tSat = @(p) interp1(Fuel.P_REF, Fuel.T_REF, p/1e5, 'pchip', 'extrap');
             Fuel.T_SUPPLY = 95; % K
 
             Fuel.RHO = 445.8; % kg/m3
@@ -47,6 +48,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
             
             Fuel.QS = 510e3; % J/kg
             Fuel.TEMP_BOIL = 111; % K
+            Fuel.TEMP_DEGRADE = 800;
             Fuel.calcK = @(t) 0.010 + 0.0001 * t;
 
         case {'LH2', 'HYDROGEN', 'H2'}
@@ -56,7 +58,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
 
             Fuel.P_REF = [1 2 3 4 5 6 8 10 12.96];
             Fuel.T_REF = [20.3 22.8 24.5 25.9 27.0 28.0 29.8 31.3 32.9];
-            Fuel.tSat = @(p) interp1(P, T, p/1e5, 'pchip', 'extrap');
+            Fuel.tSat = @(p) interp1(Fuel.P_REF, Fuel.T_REF, p/1e5, 'pchip', 'extrap');
             Fuel.T_SUPPLY = 20; % K
 
             Fuel.RHO = 70.85; % kg/m3
@@ -65,7 +67,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
             Fuel.K = 0.104; % W/(m*K)
             Fuel.SURFACE_TENSION = 0.002; % N/m
             
-            Fuel.QS = 446e3; % J/kg
+            Fuel.QS = 226e3; % J/kg
             Fuel.TEMP_BOIL = 20; % K
             Fuel.calcK = @(t) 0.050 + 0.0005 * t;
 
@@ -78,7 +80,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
 
             Fuel.P_REF = [1, 2, 5, 10, 15, 20, 25, 30, 40, 47.6];
             Fuel.T_REF = [355.4, 373.5, 403.5, 430.8, 449.2, 463.8, 476.0, 486.6, 504.0, 508.3];
-            Fuel.tSat = @(p) interp1(P, T, p/1e5, 'pchip', 'extrap');
+            Fuel.tSat = @(p) interp1(Fuel.P_REF, Fuel.T_REF, p/1e5, 'pchip', 'extrap');
             Fuel.T_SUPPLY = 293; % K
 
             Fuel.RHO = 785.0; % kg/m3
@@ -89,6 +91,7 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
     
             Fuel.QS = 663e3; % J/kg
             Fuel.TEMP_BOIL = 355.4; % K
+            Fuel.TEMP_DEGRADE = 560;
             Fuel.calcK = @(t) max(0.005, -0.012 + 0.00011 * t);
 
         otherwise
@@ -145,7 +148,9 @@ function PropData = loadPropData(FUEL_NAME, OX_NAME)
         otherwise
             error('loadPropData:UnknownOxidizer', 'Unknown oxidizer: %s', OX_NAME);
     end
-
+    
+    Fuel.NAME = FUEL_NAME;
+    Ox.NAME = OX_NAME;
     PROPELLANTS = [OX_NAME, '/', FUEL_NAME];
     
     switch PROPELLANTS

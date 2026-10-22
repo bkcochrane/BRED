@@ -10,7 +10,7 @@ function findOptimalRatio(Engine, PropData)
     pValues = [pLow, pNominal, pHigh];
     
     % Setup O/F vectors
-    ofRatios = 0.2: 0.2 : 8;
+    ofRatios = max(0.5, Engine.Specs.OF_RATIO_TARGET * 0.5): 0.2 : Engine.Specs.OF_RATIO_TARGET * 2;
     ofFine = linspace(min(ofRatios), max(ofRatios), 500);
     
     % Preallocate storage for the fine sweeps

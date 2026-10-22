@@ -7,6 +7,9 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
     %
     % SP mode solves for insentropic expansion
     % SP targets s0R
+    %
+    % TP mode solves at fixed temperature and pressure
+    % TP targets the temperature itself (no dlnT unknown, no energy row)
 
     A_IJ = PropData.A_IJ;
     bCirc = PropData.bCirc;
@@ -41,6 +44,16 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
     gasIdx(condensedAll) = [];
     numC = numel(condensedActive);
     nj(gasIdx) = max(nj(gasIdx), 1e-30);
+
+    isTP = strcmp(mode, 'TP');
+    if isTP
+        temp = target;
+        sz = NUM_ELEM + numC + 1;
+    else
+        sz = NUM_ELEM + numC + 2;
+    end
+    iN = NUM_ELEM + numC + 1;
+    iTemp = NUM_ELEM + numC + 2;
  
     MAX_ITERATIONS = 100;
  
@@ -79,12 +92,8 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
         nMu = nj .* muRT;
         nMu(isnan(nMu) | ~isfinite(nMu)) = 0.0;
  
-        sz = NUM_ELEM + numC + 2; % Elements + condensed + dlnN + dlnT
         A  = zeros(sz, sz);
         B  = zeros(sz, 1);
- 
-        iN = NUM_ELEM + numC + 1; % row/col index of dln N
-        iTemp = NUM_ELEM + numC + 2; % row/col index of dln T
  
         % Element rows (gas contribution + condensed columns)
         A(1:NUM_ELEM, 1:NUM_ELEM) = (A_IJ(:,gasIdx) .* nj(gasIdx).') * A_IJ(:,gasIdx).';
@@ -93,25 +102,33 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
             A(1:NUM_ELEM, NUM_ELEM+q) = A_IJ(:, condensedActive(q)); % Condensed column = atom vector
         end
         A(1:NUM_ELEM, iN) = A_IJ(:,gasIdx) * nj(gasIdx);
-        A(1:NUM_ELEM, iTemp) = A_IJ(:,gasIdx) * nH(gasIdx);
+        if ~isTP
+            A(1:NUM_ELEM, iTemp) = A_IJ(:,gasIdx) * nH(gasIdx);
+        end
         B(1:NUM_ELEM) = bCirc - A_IJ*nj + A_IJ(:,gasIdx) * nMu(gasIdx);
  
         % Condensed rows: phase equilibrium sum a_ij pi_i + (H_c/RT)dlnT = mu_c/RT
         for q = 1:numC
             j = condensedActive(q);
             A(NUM_ELEM+q, 1:NUM_ELEM) = A_IJ(:,j).';
-            A(NUM_ELEM+q, iTemp) = hRT(j);
+            if ~isTP
+                A(NUM_ELEM+q, iTemp) = hRT(j);
+            end
             B(NUM_ELEM+q) = muRT(j);
         end
  
         % Total-moles row (gases only)
         A(iN, 1:NUM_ELEM) = (A_IJ(:,gasIdx) * nj(gasIdx)).';
         A(iN, iN) = sum(nj(gasIdx)) - nTotal;
-        A(iN, iTemp) = sum(nH(gasIdx));
+        if ~isTP
+            A(iN, iTemp) = sum(nH(gasIdx));
+        end
         B(iN) = nTotal - sum(nj(gasIdx)) + sum(nMu(gasIdx));
  
-        % Energy / entropy row 
-        if strcmp(mode,'HP')
+        % Energy / entropy row
+        if isTP
+            % Temperature is fixed, so there is no energy or entropy row
+        elseif strcmp(mode,'HP')
             hMixRT = sum(nH); 
             A(iTemp, 1:NUM_ELEM) = A(1:NUM_ELEM, iTemp).';
             for q = 1:numC, A(iTemp, NUM_ELEM+q) = hRT(condensedActive(q)); end
@@ -136,6 +153,7 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
         % Solve
         if rcond(A) < 1e-15
             % Use Moore-Penrose pseudo-inverse for singular/badly scaled matrices
+            fprintf('[Warning] findEquilibrium:singular %s solve near-singular at T = %.0f K, p = %.3g Pa\n', mode, temp, p);
             x = pinv(full(A)) * B; 
         else
             x = A \ B;
@@ -144,7 +162,12 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
         piI = x(1:NUM_ELEM);
         deltaNumC = x(NUM_ELEM + (1:numC)); % Linear update for condensed
         deltaLnN = x(iN);
-        deltaLnTemp = x(iTemp);
+
+        if isTP
+            deltaLnTemp = 0;
+        else
+            deltaLnTemp = x(iTemp);
+        end
  
         % Gas log-updates derived from the multipliers
         deltaLnNJ = zeros(NUM_SPECIES,1);
@@ -169,8 +192,10 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
         deltaTempSafe = max(-10, min(10, lambda*deltaLnTemp));
         gasUpdateSafe = max(-50, min(50, lambda*deltaLnNJ(gasIdx)));
         
-        tempNew = temp * exp(deltaTempSafe);
-        temp = max(150, min(20000, tempNew)); 
+        if ~isTP
+            tempNew = temp * exp(deltaTempSafe);
+            temp = max(150, min(20000, tempNew));
+        end
         
         nj(gasIdx) = max(nj(gasIdx) .* exp(gasUpdateSafe), 1e-25);
         
@@ -178,6 +203,11 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
             nj(condensedActive) = max(nj(condensedActive) + lambda * deltaNumC, 0); % Additive, can't be negative
         end
         
+    end
+
+    if isTP
+        assert(abs(sum(nj .* MOLAR_MASSES) - 1) < 1e-3, ...
+            'TP solve: mass %.4f kg/kg', sum(nj .* MOLAR_MASSES));
     end
  
     % Derived properties

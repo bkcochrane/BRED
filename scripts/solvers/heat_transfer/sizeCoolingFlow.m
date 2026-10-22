@@ -1,111 +1,120 @@
 function Engine = sizeCoolingFlow(Engine, PropData, method)
+
     if nargin < 3
         method = 'Bartz';
     end
 
-    MARGIN = 40; % K below design margin
-
-   % Saturation / boiling limit
-    P_MIN = Engine.Chamber.P * 1.2;
-    if P_MIN > max(Engine.Cooling.Coolant.P_REF)
-        tempLimitSat = Inf;
-        tempSat = Inf;
-    else
-        tempSat = Engine.Cooling.Coolant.tSat(P_MIN);
-        tempLimitSat = tempSat - MARGIN;
-    end
-    
-    % Coking / decomposition limit
-    tempLimitCoke = Inf;
-    if contains(upper(PropData.FUEL), 'RP') || contains(upper(PropData.FUEL), 'KEROSENE')
-        tempLimitCoke = 560 - MARGIN;
-    elseif contains(upper(PropData.FUEL), 'CH4') || contains(upper(PropData.FUEL), 'METHANE')
-        tempLimitCoke = 850 - MARGIN;
-    end
-    
-    tempLimit = min(tempLimitSat, tempLimitCoke);
-    tempIn = Engine.Cooling.Coolant.T_SUPPLY;
+    TEMP_LIMIT_WALL = 1750;
+    COOLANT_MARGIN = 40;
     TOLERANCE = 0.5;
+    MAX_ITER = 20;
 
-    % Start by testing 100% of the nominal fuel flow
-    if Engine.Cooling.REGEN_COOLING
-        mdotNominal = Engine.Fuel.mdot;
+    % Saturation limit, evaluated at the jacket pressure
+    pJacket = Engine.Chamber.P * 1.2;
+    if ~isfield(Engine.Cooling.Coolant, 'tSat') || pJacket > max(Engine.Cooling.Coolant.P_REF)
+        tempSat = Inf;
+        tempLimitSat = Inf;
     else
-        mdotNominal = Engine.Cooling.Coolant.mdot;
+        tempSat = Engine.Cooling.Coolant.tSat(pJacket);
+        tempLimitSat = tempSat - COOLANT_MARGIN;
     end
 
-    Engine.Cooling.Coolant.mdot = mdotNominal;
-    Engine = calculateHeatFlux(Engine, PropData, method);
-    tempOut = max(Engine.Wall.tempCoolant);
+    % Coking / thermal decomposition limit, only relevant for regen
+    tempLimitDegradation = Inf;
+    if Engine.Cooling.REGEN_COOLING && isfield(Engine.Cooling.Coolant, 'TEMP_DEGRADE')
+        tempLimitDegradation = Engine.Cooling.Coolant.TEMP_DEGRADE - COOLANT_MARGIN;
+    end
 
-    % Store saturation margin at nominal flow
+    tempLimitCoolant = min(tempLimitSat, tempLimitDegradation);
+
+
+    tempIn = Engine.Cooling.Coolant.T_SUPPLY;
+
+    filmFrac = Engine.Cooling.FILM_COOLING_FRACTION;
+    mdotFuelAvailable = Engine.Fuel.mdot * (1 - filmFrac);
+
+    if Engine.Cooling.REGEN_COOLING
+        Engine.Cooling.Coolant.mdot = mdotFuelAvailable;
+        Engine = calculateHeatFlux(Engine, PropData, method);
+        Engine.Cooling.COOLANT_LIMITED = max(Engine.Wall.tempWG) > TEMP_LIMIT_WALL || max(Engine.Wall.tempCoolant) > tempLimitCoolant;
+        Engine.Cooling.bypassFraction = 0;
+        return;
+    end
+
+    converged = false;
+    atCap = false;
+
+    mdot = Engine.Cooling.Coolant.mdot;
+    mdotCap = Inf;
+
+    for iter = 1:MAX_ITER
+
+        Engine.Cooling.Coolant.mdot = mdot;
+        Engine = calculateHeatFlux(Engine, PropData, method);
+
+        tempCoolantOut = max(Engine.Wall.tempCoolant);
+        tempWallMax = max(Engine.Wall.tempWG);
+
+        % Signed errors: positive means the limit is exceeded
+        if isinf(tempLimitCoolant)
+            errCoolant = -Inf;
+            errCoolantNorm = -Inf;
+        else
+            errCoolant = tempCoolantOut - tempLimitCoolant;
+            errCoolantNorm = errCoolant / max(tempLimitCoolant - tempIn, 10);
+        end
+
+        errWall = tempWallMax - TEMP_LIMIT_WALL;
+        errWallNorm = errWall / 100;
+
+        worstErr = max(errCoolant, errWall);
+        worstErrNorm = max(errCoolantNorm, errWallNorm);
+
+        if abs(worstErr) <= TOLERANCE
+            converged = true;
+            break;
+        end
+
+        % Already at the flow cap and still over a limit: nothing more to give
+        if worstErr > 0 && mdot >= mdotCap * (1 - 1e-9)
+            atCap = true;
+            break;
+        end
+
+        % More flow if over a limit, less if comfortably under
+        ALPHA = 0.5;
+        correction = max(-0.3, min(0.5, ALPHA * worstErrNorm));
+        mdot = min(mdot * (1 + correction), mdotCap);
+
+    end
+
+    if ~converged && ~atCap
+        fprintf('[Warning] Coolant flow did not converge in %d iterations (worst error %.1f K).\n', ...
+            MAX_ITER, worstErr);
+    end
+
+    Engine.Cooling.Coolant.mdot = mdot;
+    Engine.Cooling.COOLANT_LIMITED = atCap;
+
     Engine.Cooling.Coolant.tempSat = tempSat;
     if isinf(tempSat)
         Engine.Cooling.Coolant.tempMargin = Inf;
     else
-        Engine.Cooling.Coolant.tempMargin = tempSat - tempOut;
-    end
-
-    if Engine.Cooling.REGEN_COOLING && (tempOut <= tempLimit)
-        return;
-    end
-
-    % Iterate to find the required coolant mass flow if current flow not sufficienet
-    mdotNew = mdotNominal;
-    for iter = 1:20
-        mdot = mdotNew;
-        Engine.Cooling.Coolant.mdot = mdot;
-        Engine = calculateHeatFlux(Engine, PropData, method);
-        tempOut = max(Engine.Wall.tempCoolant);
-
-        tempError = tempOut - tempLimit;
-        if abs(tempError) <= TOLERANCE
-            break; 
-        end
-
-        alpha = 0.3;
-        correction = alpha * (tempError / max(tempLimit - tempIn, 10));
-        mdotNew = mdot * (1 + correction);
-        
-        % Never drop below nominal fuel flow if regen cooling is active
-        if Engine.Cooling.REGEN_COOLING
-            mdotNew = max(Engine.Fuel.mdot, min(3.0 * mdot, mdotNew));
-        else
-            mdotNew = max(0.1 * mdot, min(3.0 * mdot, mdotNew));
-        end
-    end
-
-    % Update margin after loop
-    if ~isinf(tempSat)
         Engine.Cooling.Coolant.tempMargin = tempSat - max(Engine.Wall.tempCoolant);
     end
 
-    if ~Engine.Cooling.REGEN_COOLING
-        Engine.Cooling.Coolant.mdot = mdot;
-        return;
-    end
+    Engine.Cooling.bypassFraction = 0;
 
-    % Guard against cooling flow exceeding total engine mass flow
-    if mdot >= Engine.Specs.mdot
-        warning('Required cooling mass flow (%.3f kg/s) exceeds total engine mdot. Clamping.\n', mdot);
-        mdot = Engine.Specs.mdot * 0.95;
-    end
-
-    MIN_OF_RATIO = 0.5;
-    requiredOxMdot = Engine.Specs.mdot - mdot;
-    requiredOFRatio = requiredOxMdot / mdot;
-
-    if requiredOFRatio < MIN_OF_RATIO
-        warning('Required O/F ratio %.3f is below the minimum allowed limit: O/F ratio clamped to %.3f.\n', requiredOFRatio, MIN_OF_RATIO);
-        Engine.Specs.ofRatio = MIN_OF_RATIO;
+    if atCap
+        fprintf(['[Warning] Regen cooling insufficient at full fuel flow (%.3f kg/s): ', ...
+                 'wall %.0f K, coolant out %.0f K. Revisit channel geometry, ', ...
+                 'wall material or cooling strategy.\n'], ...
+                 mdot, max(Engine.Wall.tempWG), max(Engine.Wall.tempCoolant));
+        Engine.Cooling.bypassFraction = 0;
     else
-        Engine.Specs.ofRatio = requiredOFRatio;
+        Engine.Cooling.bypassFraction = 1 - (mdot / mdotFuelAvailable);
+        fprintf('Cooling sized: %.1f%% of fuel bypasses the jacket.\n', ...
+            Engine.Cooling.bypassFraction * 100);
     end
 
-    Engine.Ox.mdot = Engine.Specs.mdot * Engine.Specs.ofRatio / (Engine.Specs.ofRatio + 1);
-    Engine.Fuel.mdot = Engine.Specs.mdot / (Engine.Specs.ofRatio + 1);
-    Engine.Cooling.Coolant.mdot = Engine.Fuel.mdot;
-
-    % Re-run calculateHeatFlux if mdot was clamped
-    Engine = calculateHeatFlux(Engine, PropData, method);
 end

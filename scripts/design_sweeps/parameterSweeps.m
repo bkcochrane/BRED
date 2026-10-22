@@ -7,7 +7,7 @@ function parameterSweeps(Engine, PropData)
     BASE_CONE = Engine.Geometry.CONE_PERCENT; 
     BASE_CR = Engine.Geometry.CONTRACTION_RATIO_TARGET;
     
-    sweepMultiplier = 0.5 : 0.01 : 1.5;
+    sweepMultiplier = 0.5 : 0.1 : 1.5;
 
     sweeps(1) = struct('field','Specs.TARGET_THRUST', ...
                        'values', (BASE_THRUST/1000) * sweepMultiplier, ...

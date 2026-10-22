@@ -170,7 +170,7 @@ function Engine = calculateProfile(Engine)
     % Full
     % ------------------------------------------------------------------------
     
-    numCylidricalPoints = 2;
+    numCylidricalPoints = 10;
     xCylindrical = linspace(lengthChamber, min(xConverging), numCylidricalPoints);
     rCylindrical = radiusChamber * ones(1, numCylidricalPoints);
 
