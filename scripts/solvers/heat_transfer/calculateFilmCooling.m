@@ -6,7 +6,6 @@ function Film = calculateFilmCooling(Engine, PropData, filmCoolingFraction)
     % The Russian subscripts have been westernised (Russian z looks like a 3)
 
     x = Engine.Stream.x;
-    r = Engine.Stream.r;
 
     alpha_k = Engine.Wall.hG;
     T_r0 = Engine.Wall.tempAW;
