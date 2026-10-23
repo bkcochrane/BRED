@@ -1,8 +1,8 @@
 function Bartz = calculateBartz(Engine)
 
-    muChamber = Engine.Stream.mu(1);
+    muChamber = Engine.Chamber.mu;
     cpChamber = Engine.Chamber.cp;
-    kChamber = Engine.Stream.k(1);
+    kChamber = Engine.Chamber.k;
     prandtlChamber = muChamber * cpChamber / kChamber;
     cStar = Engine.Specs.cStar;
     P_CHAMBER = Engine.Chamber.P;

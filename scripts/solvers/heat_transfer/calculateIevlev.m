@@ -138,9 +138,10 @@ function Ievlev = calculateIevlev(Engine, PropData)
     if isempty(iValid)
         error('calculateIevlev: no valid station downstream of the combustion zone');
     end
-    iValid = min(iValid + 3, numStations);
-    qVec(1:iValid) = qVec(iValid);
-    hG(1:iValid) = hG(iValid);
+    iAnchor = find(x >= x(iValid) + 2 * diameterThroat, 1, 'first');
+    if isempty(iAnchor), iAnchor = numStations; end
+    qVec(1:iAnchor) = qVec(iAnchor);
+    hG(1:iAnchor) = hG(iAnchor);
 
     assert(all(isfinite(qVec)), 'calculateIevlev: %d non-finite flux values', sum(~isfinite(qVec)));
 
@@ -153,7 +154,7 @@ function Ievlev = calculateIevlev(Engine, PropData)
     % Better tauW calculation for estimating nozzle efficiency eqs 11.39 & 11.25
     alpha = 0.377 .* z.^(-0.224) + 3.966e-4;
     tauW = alpha .* rho .* wMaxRef.^2;
-
-    Engine.Stream.tauw = tauW;
+    
+    Ievlev.tauW = tauW;
     
 end

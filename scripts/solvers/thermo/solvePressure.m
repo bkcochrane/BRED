@@ -32,7 +32,7 @@ function p = solvePressure(s0R, h0, Engine, PropData, temp, nj, mdot, area, pRef
 
         fluxErrorCurr = fluxError(p);
         
-        if abs(fluxErrorCurr) / massFluxTarget < 1e-4
+        if abs(fluxErrorCurr) / massFluxTarget < 1e-6 && abs(p - pPrev) / p < 1e-6
             return;
         end
 

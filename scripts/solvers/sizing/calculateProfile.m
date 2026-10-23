@@ -5,6 +5,9 @@ function Engine = calculateProfile(Engine)
     diameterChamber = 2 * sqrt(areaChamber/pi); % m
     diameterThroat = 2 * sqrt(Engine.Throat.area/pi); % m
     diameterExit = 2 * sqrt(Engine.Exit.area/pi); % m
+    
+    % Resolution of contour
+    targetSpacing = diameterThroat / 15;
 
     % ------------------------------------------------------------------------
     % Calculate converging section profile 
@@ -25,7 +28,8 @@ function Engine = calculateProfile(Engine)
     end
     
     % Blend to throat
-    theta = linspace(0, betaAngle, 20);
+    numThroatArc = max(5, ceil(blendRadiusThroat * betaAngle / targetSpacing));
+    theta = linspace(0, betaAngle, numThroatArc);
     xThroatArc = -blendRadiusThroat * sin(theta);
     rThroatArc = radiusThroat + blendRadiusThroat * (1 - cos(theta));
     x1 = xThroatArc(end);
@@ -56,18 +60,19 @@ function Engine = calculateProfile(Engine)
         x2 = x1 - (r3 - r1) / tan(betaAngle);
         
         % Blend to chamber
-        phi = linspace(betaAngle, 0, 10);
+        numChamberArc = max(5, ceil(blendRadiusChamber * betaAngle / targetSpacing));
+        phi = linspace(betaAngle, 0, numChamberArc);
         xChamberCentre = x2 - blendRadiusChamber * sin(betaAngle);
         xChamberArc = xChamberCentre + blendRadiusChamber * sin(phi);
         rChamberArc = radiusChamber - blendRadiusChamber * (1 - cos(phi));
 
-        numConePoints = 10;
+        numConePoints = max(5, ceil(hypot(x2 - x1, r3 - r1) / targetSpacing));
         xCone = linspace(x1, x2, numConePoints);
         rCone = linspace(r1, r3, numConePoints);
         
         % Combine profile
-        xConverging = [xThroatArc, xCone, xChamberArc];
-        rConverging = [rThroatArc, rCone, rChamberArc];
+        xConverging = [xThroatArc, xCone(2:end), xChamberArc(2:end)];
+        rConverging = [rThroatArc, rCone(2:end), rChamberArc(2:end)];
         
         % Calculate volumes
         [xs, idx] = sort(xConverging);
@@ -132,7 +137,8 @@ function Engine = calculateProfile(Engine)
     
     % Throat arc downstream
     rArcD = 0.382 * radiusThroat;
-    angleDiverging = linspace(-pi/2, thetaN - pi/2, 20);
+    numDivergingArc = max(3, ceil(rArcD * thetaN / targetSpacing));
+    angleDiverging = linspace(-pi/2, thetaN - pi/2, numDivergingArc);
     xDivergingArc = rArcD * cos(angleDiverging);
     rDivergingArc = radiusThroat + rArcD + rArcD * sin(angleDiverging);
     
@@ -158,7 +164,8 @@ function Engine = calculateProfile(Engine)
     rControlPoints = rInflection + mN*(xControlPoints - xInflection);
     
     % Create bezier curve
-    t = linspace(0, 1, 80).';
+    numParabolic = max(10, ceil(hypot(xExit - xInflection, rExit - rInflection) / targetSpacing));
+    t = linspace(0, 1, numParabolic).';
     xParabolic = (1-t).^2 * xInflection + 2*(1-t).*t * xControlPoints + t.^2 * xExit;
     rParabolic = (1-t).^2 * rInflection + 2*(1-t).*t * rControlPoints + t.^2 * rExit;
     
@@ -170,7 +177,7 @@ function Engine = calculateProfile(Engine)
     % Full
     % ------------------------------------------------------------------------
     
-    numCylidricalPoints = 10;
+    numCylidricalPoints = max(5, ceil(lengthChamberCylindrical / targetSpacing));
     xCylindrical = linspace(lengthChamber, min(xConverging), numCylidricalPoints);
     rCylindrical = radiusChamber * ones(1, numCylidricalPoints);
 

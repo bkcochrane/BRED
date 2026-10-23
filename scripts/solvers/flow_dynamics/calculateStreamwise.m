@@ -79,6 +79,17 @@ function Engine = calculateStreamwise(Engine, PropData, region)
         for k = 1:numel(idx)
             i = idx(k);
             areaLocal = areaLocalAll(k);
+
+            if k > 1 && areaLocal == areaLocalAll(k-1)
+                p = pPrevious;
+                if isFrozen
+                    [temp, njFrozen] = store(i, p, temp, njFrozen, true);
+                else
+                    [temp, nj] = store(i, p, temp, nj, false);
+                    njFrozen = nj;
+                end
+                continue;
+            end
             
             if ~isFrozen && isSupersonic && (areaLocal > freezeThreshold)
                 isFrozen = true;

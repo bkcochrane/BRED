@@ -4,14 +4,18 @@ function Engine = sizeCoolingFlow(Engine, PropData, method)
         method = 'Bartz';
     end
 
-    TEMP_LIMIT_WALL = 1750;
+    TEMP_LIMIT_WALL = 1000;
     COOLANT_MARGIN = 40;
     TOLERANCE = 0.5;
     MAX_ITER = 20;
 
     % Saturation limit, evaluated at the jacket pressure
-    pJacket = Engine.Chamber.P * 1.2;
-    if ~isfield(Engine.Cooling.Coolant, 'tSat') || pJacket > max(Engine.Cooling.Coolant.P_REF)
+    if strcmp(Engine.Cooling.Coolant.NAME, 'WATER')
+        pJacket = Engine.Cooling.Coolant.P_SUPPLY;
+    else
+        pJacket = Engine.Chamber.P * 1.2;
+    end
+    if ~isfield(Engine.Cooling.Coolant, 'tSat') || pJacket / 1e5 > max(Engine.Cooling.Coolant.P_REF)
         tempSat = Inf;
         tempLimitSat = Inf;
     else

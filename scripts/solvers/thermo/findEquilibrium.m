@@ -55,7 +55,7 @@ function [temp, nj, Propellant, piI] = findEquilibrium(mode, target, p, PropData
     iN = NUM_ELEM + numC + 1;
     iTemp = NUM_ELEM + numC + 2;
  
-    MAX_ITERATIONS = 100;
+    MAX_ITERATIONS = 200;
  
     for iter = 1:MAX_ITERATIONS
         

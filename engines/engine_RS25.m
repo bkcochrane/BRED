@@ -19,7 +19,7 @@ function Engine = engine_RS25
     
     Engine.Chamber.P = 206.4e5; % Pa
     
-    Engine.Geometry.LSTAR_TARGET = 1; % m
+    Engine.Geometry.LSTAR_TARGET = 1.2; % m
     Engine.Geometry.CONTRACTION_RATIO_TARGET = 4; % AREA_CHAMBER / AREA_THROAT
     
     Engine.Geometry.CONE_PERCENT = 80;
@@ -33,8 +33,8 @@ function Engine = engine_RS25
     Engine.Cooling.REGEN_COOLING = true;
     Engine.Cooling.FILM_COOLING_FRACTION = 0.0;
     
-    Engine.Cooling.CHANNEL_WIDTH_MIN = 0.0025; % m
-    Engine.Cooling.CHANNEL_HEIGHT_MIN = 0.0025; % m
+    Engine.Cooling.CHANNEL_WIDTH_MIN = 0.005; % m
+    Engine.Cooling.CHANNEL_HEIGHT_MIN = 0.005; % m
     Engine.Cooling.CHANNEL_HEIGHT_MAX = 0.008; % m
     Engine.Cooling.CHANNEL_ROUGHNESS = 5e-6; % m
     Engine.Cooling.LAND_WIDTH = 0.001; % m

@@ -80,10 +80,23 @@ function Engine = calculateHeatFlux(Engine, PropData, method)
             TempWall = calculateBartz(Engine);
 
         end
+
+        if strcmp(method, 'Modified Bartz')
+
+            TempWall = calculateModifiedBartz(Engine);
+        
+        end
+
+        if strcmp(method, 'Pavli')
+
+            TempWall = calculatePavli(Engine);
+        
+        end
         
         if strcmp(method, 'Ievlev')
-
+            
             TempWall = calculateIevlev(Engine, PropData);
+            Engine.Stream.tauW = TempWall.tauW;
             if k == 1
                 qIevlev = TempWall.q;
             else

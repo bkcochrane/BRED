@@ -32,7 +32,7 @@ function Film = calculateFilmCooling(Engine, PropData, filmCoolingFraction)
     l_X = eta * (mdot_3 / (pi * D)) * (c_X * (T_S - T_H) / (alpha_k(1) * (T_r0(1) - T_cp)) + Q_S / (alpha_k(1) * (T_r0(1) - T_S)));
 
     % Mixing completeness, eq 12.46 - 12.48
-    H_cT = 0.02; % Distance from the last ring of injectors, not yet linked
+    H_cT = Engine.Chamber.diameter * 0.01; % Distance from the last ring of injectors, not yet linked
     xbar = max(0, (x - x(1) - l_X) ./ H_cT);
     K = 0.1e-2; % Turbulent mixing constant, between 0.05e-2 and 0.2e-2
     M = K * mbar_cT / mbar_3; % Mixing coefficient

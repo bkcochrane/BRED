@@ -36,14 +36,20 @@ function Engine = solveThermal(Engine, PropData)
     
     Engine = sizeCoolingFlow(Engine, PropData, 'Bartz');
 
-    
-
     EngineBartz  = calculateHeatFlux(Engine, PropData, 'Bartz');
-    EngineIevlev = calculateHeatFlux(Engine, PropData, 'Ievlev');
-
-    Engine.Wall = EngineIevlev.Wall;
     Engine.Wall.Bartz = EngineBartz.Wall;
+
+    % EngineModifiedBartz  = calculateHeatFlux(Engine, PropData, 'Modified Bartz');
+    % Engine.Wall.ModifiedBartz = EngineModifiedBartz.Wall;
+    % 
+    % EnginePavli  = calculateHeatFlux(Engine, PropData, 'Pavli');
+    % Engine.Wall.Pavli = EnginePavli.Wall;
+
+    EngineIevlev = calculateHeatFlux(Engine, PropData, 'Ievlev');
     Engine.Wall.Ievlev = EngineIevlev.Wall;
+    
+    % Use Ievlev for results
+    Engine.Wall.Results = EngineIevlev.Wall;
 
     Engine = coolantPressureDrop(Engine);
 
